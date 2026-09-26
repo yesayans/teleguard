@@ -1,0 +1,611 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TeleGuard AI - Ideathon Pitch Deck</title>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #090d16;
+            --surface: #111827;
+            --surface-card: #182235;
+            --border: #223049;
+            --cyan: #00f2fe;
+            --blue: #3b82f6;
+            --red: #ef4444;
+            --green: #10b981;
+            --amber: #f59e0b;
+            --text-main: #f8fafc;
+            --text-sub: #94a3b8;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            background-color: var(--bg);
+            color: var(--text-main);
+            overflow: hidden;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .slide-deck {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .slide {
+            position: absolute;
+            width: 90%;
+            max-width: 1100px;
+            height: 82%;
+            background: linear-gradient(145deg, rgba(17, 24, 39, 0.95), rgba(24, 34, 53, 0.95));
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            padding: 48px 56px;
+            display: none;
+            flex-direction: column;
+            justify-content: space-between;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(16px);
+        }
+
+        .slide.active {
+            display: flex;
+            animation: fadeIn 0.3s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: scale(0.98); }
+            to { opacity: 1; transform: scale(1); }
+        }
+
+        .slide-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 6px 14px;
+            background: rgba(0, 242, 254, 0.12);
+            color: var(--cyan);
+            border: 1px solid rgba(0, 242, 254, 0.25);
+            border-radius: 999px;
+            font-size: 12px;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+            margin-bottom: 12px;
+        }
+
+        h1 {
+            font-size: 40px;
+            font-weight: 800;
+            letter-spacing: -1px;
+            line-height: 1.15;
+            background: linear-gradient(135deg, #ffffff 40%, var(--cyan) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        h2 {
+            font-size: 28px;
+            font-weight: 700;
+            margin-bottom: 8px;
+            letter-spacing: -0.5px;
+        }
+
+        p.subtitle {
+            font-size: 18px;
+            color: var(--text-sub);
+            line-height: 1.5;
+        }
+
+        .content-area {
+            flex: 1;
+            margin: 28px 0;
+            display: flex;
+            gap: 28px;
+            align-items: stretch;
+        }
+
+        .col {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .feature-card {
+            background: var(--surface-card);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .feature-card h3 {
+            font-size: 16px;
+            font-weight: 700;
+            color: var(--cyan);
+        }
+
+        .feature-card p {
+            font-size: 14px;
+            color: var(--text-sub);
+            line-height: 1.5;
+        }
+
+        .stat-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 16px;
+        }
+
+        .stat-box {
+            background: rgba(0, 0, 0, 0.25);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 20px;
+            text-align: center;
+        }
+
+        .stat-num {
+            font-size: 38px;
+            font-weight: 800;
+            color: var(--cyan);
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .stat-label {
+            font-size: 13px;
+            color: var(--text-sub);
+            margin-top: 4px;
+        }
+
+        .slide-footer {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-top: 1px solid var(--border);
+            padding-top: 18px;
+            font-size: 13px;
+            color: var(--text-sub);
+        }
+
+        .controls {
+            position: fixed;
+            bottom: 24px;
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            background: rgba(17, 24, 39, 0.8);
+            border: 1px solid var(--border);
+            padding: 8px 16px;
+            border-radius: 999px;
+            backdrop-filter: blur(8px);
+            z-index: 100;
+        }
+
+        .btn-ctrl {
+            background: var(--surface-card);
+            border: 1px solid var(--border);
+            color: var(--text-main);
+            padding: 6px 14px;
+            border-radius: 999px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 12px;
+            transition: all 0.2s;
+        }
+
+        .btn-ctrl:hover {
+            background: var(--cyan);
+            color: #000;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="slide-deck">
+        <!-- Slide 1: Cover -->
+        <div class="slide active">
+            <div class="slide-header">
+                <div>
+                    <span class="badge">Ideathon 2026 • Cybersecurity Track</span>
+                    <h1>TeleGuard AI</h1>
+                    <p class="subtitle">In-Network Deepfake Voice Defense for Telecom Operators</p>
+                </div>
+                <div style="text-align: right; font-size: 12px; color: var(--text-sub);">
+                    <span>EU TUMO Convergence Center</span><br>
+                    <span>eutumocc@tumo.org</span>
+                </div>
+            </div>
+            <div class="content-area" style="align-items: center; justify-content: center;">
+                <div class="feature-card" style="max-width: 700px; text-align: center; padding: 32px; border-color: rgba(0, 242, 254, 0.3);">
+                    <h3 style="font-size: 22px; color: #fff; margin-bottom: 12px;">Real-Time Synthetic Speech Detection at Carrier SBCs</h3>
+                    <p style="font-size: 16px; line-height: 1.6;">
+                        Protecting every mobile, fixed, and legacy phone subscriber against weaponized AI voice cloning scams with <strong>zero app installation</strong>, <strong>zero audio recording</strong>, and <strong>sub-second in-call alerts</strong>.
+                    </p>
+                </div>
+            </div>
+            <div class="slide-footer">
+                <span>Slide 1 of 10 • Pitch Duration: 5:00</span>
+                <span>Team TeleGuard</span>
+            </div>
+        </div>
+
+        <!-- Slide 2: Problem & App Fallacy -->
+        <div class="slide">
+            <div class="slide-header">
+                <div>
+                    <span class="badge" style="color: var(--red); border-color: rgba(239, 68, 68, 0.3);">The Threat</span>
+                    <h2>The $3.5B Voice Cloning Epidemic & The App Fallacy</h2>
+                    <p class="subtitle">Why traditional mobile security completely fails against imposter scams.</p>
+                </div>
+            </div>
+            <div class="content-area">
+                <div class="col">
+                    <div class="stat-grid">
+                        <div class="stat-box">
+                            <div class="stat-num" style="color: var(--red);">$3.5B+</div>
+                            <div class="stat-label">FTC Consumer Imposter Losses (2025)</div>
+                        </div>
+                        <div class="stat-box">
+                            <div class="stat-num">70%</div>
+                            <div class="stat-label">Adults unable to distinguish AI voice clones</div>
+                        </div>
+                    </div>
+                    <div class="feature-card">
+                        <h3>Vulnerability of the Elderly</h3>
+                        <p>Senior citizens are the #1 target of "grandparent bail" and emergency cash scams. Emotional extortion bypasses critical thinking in under 60 seconds.</p>
+                    </div>
+                </div>
+                <div class="col">
+                    <div class="feature-card" style="border-left: 4px solid var(--red);">
+                        <h3>1. The Adoption Barrier</h3>
+                        <p>94% of elderly victims never install or update third-party security apps. Millions still rely on basic 2G/3G feature phones or fixed landlines.</p>
+                    </div>
+                    <div class="feature-card" style="border-left: 4px solid var(--red);">
+                        <h3>2. The Mobile OS Sandbox Blindspot</h3>
+                        <p>Both Apple (iOS CallKit) and Google (Android) strictly forbid 3rd-party apps from tapping raw cellular call audio in real time due to privacy restrictions.</p>
+                    </div>
+                </div>
+            </div>
+            <div class="slide-footer">
+                <span>Slide 2 of 10</span>
+                <span>Problem Definition</span>
+            </div>
+        </div>
+
+        <!-- Slide 3: Solution Architecture -->
+        <div class="slide">
+            <div class="slide-header">
+                <div>
+                    <span class="badge" style="color: var(--green); border-color: rgba(16, 185, 129, 0.3);">Our Solution</span>
+                    <h2>In-Network Side-Channel Inspection: Zero-App Protection</h2>
+                    <p class="subtitle">Deploying inside telecom Session Border Controllers (SBC) with zero audio storage.</p>
+                </div>
+            </div>
+            <div class="content-area">
+                <div class="col">
+                    <div class="feature-card">
+                        <h3>1. Zero Latency Stream Tapping</h3>
+                        <p>Non-intrusive bifurcated RTP mirroring at the telecom core. The voice call travels uninterrupted while side-channel DSP runs in &lt;25ms.</p>
+                    </div>
+                    <div class="feature-card">
+                        <h3>2. Strict GDPR & Wiretap Privacy</h3>
+                        <p>Audio is ingested into ephemeral volatile RAM ring buffers. Extracted into mathematical embeddings; raw audio is immediately overwritten. Zero disk I/O.</p>
+                    </div>
+                </div>
+                <div class="col">
+                    <div class="feature-card">
+                        <h3>3. Universal Reach: Any Device</h3>
+                        <p>Protects a $15 Nokia feature phone, vintage landline, or iPhone 16. Protection is provisioned natively at the SIM and carrier routing level.</p>
+                    </div>
+                    <div class="feature-card">
+                        <h3>4. Dual-Action In-Call Alert</h3>
+                        <p>In-band gentle audio whisper injected into subscriber's downlink stream + instant Telco Class-0 Flash SMS screen takeover.</p>
+                    </div>
+                </div>
+            </div>
+            <div class="slide-footer">
+                <span>Slide 3 of 10</span>
+                <span>Solution Architecture</span>
+            </div>
+        </div>
+
+        <!-- Slide 4: Technology & Dissertation Moat -->
+        <div class="slide">
+            <div class="slide-header">
+                <div>
+                    <span class="badge">Proprietary Technology</span>
+                    <h2>Three-Tier Detection & Acoustic Certificate Innovation</h2>
+                    <p class="subtitle">Defending against both commercial APIs and open-source zero-day voice cloning.</p>
+                </div>
+            </div>
+            <div class="content-area">
+                <div class="feature-card col">
+                    <h3>Tier 1: Commercial Watermarks</h3>
+                    <p>Sub-10ms spread-spectrum extraction for known model watermarks (Google SynthID, Meta AudioSeal, ElevenLabs).</p>
+                </div>
+                <div class="feature-card col">
+                    <h3>Tier 2: Dissertation Reconstruction</h3>
+                    <p>Physics-based vocoder inspection: neural upsampling phase discontinuities, LPC glottal excitation residuals, and bispectral bicoherence.</p>
+                </div>
+                <div class="feature-card col">
+                    <h3>Tier 3: Acoustic Noise Certificate</h3>
+                    <p>Dynamic acoustic challenge-response. Generative voice cloners incur latency and destroy micro-acoustic noise tokens, exposing imposters.</p>
+                </div>
+            </div>
+            <div class="slide-footer">
+                <span>Slide 4 of 10</span>
+                <span>Technical Defensibility</span>
+            </div>
+        </div>
+
+        <!-- Slide 5: Live Demo -->
+        <div class="slide">
+            <div class="slide-header">
+                <div>
+                    <span class="badge" style="color: var(--cyan); border-color: rgba(0, 242, 254, 0.3);">Prototype Verification</span>
+                    <h2>Working Prototype & Latency SLA</h2>
+                    <p class="subtitle">Simulating live SBC stream bifurcation and instantaneous threat mitigation.</p>
+                </div>
+            </div>
+            <div class="content-area">
+                <div class="col">
+                    <div class="stat-grid">
+                        <div class="stat-box">
+                            <div class="stat-num" style="color: var(--green);">6.3 ms</div>
+                            <div class="stat-label">Average Frame Latency (Budget: &lt;50ms)</div>
+                        </div>
+                        <div class="stat-box">
+                            <div class="stat-num" style="color: var(--green);">100%</div>
+                            <div class="stat-label">In-Memory Volatile RAM (0 bytes to disk)</div>
+                        </div>
+                    </div>
+                    <div class="feature-card">
+                        <h3>Fast Detection Window</h3>
+                        <p>Synthetic speech flagged within <strong>1.2 seconds</strong> of voice onset (3 frames of 400ms), before scammer establishes psychological leverage.</p>
+                    </div>
+                </div>
+                <div class="col">
+                    <div class="feature-card">
+                        <h3>Interactive Web & CLI Dashboard</h3>
+                        <p>Demonstrated during Hackathon: Live RTP audio stream parsing, dynamic waveform visualizer, and simulated handset in-call whisper audio injection.</p>
+                    </div>
+                </div>
+            </div>
+            <div class="slide-footer">
+                <span>Slide 5 of 10</span>
+                <span>Prototype Execution</span>
+            </div>
+        </div>
+
+        <!-- Slide 6: Competitor Matrix -->
+        <div class="slide">
+            <div class="slide-header">
+                <div>
+                    <span class="badge">Market Positioning</span>
+                    <h2>Competitor Comparison: Why We Stand Alone</h2>
+                    <p class="subtitle">The only carrier-grade in-network deepfake protection for everyday subscribers.</p>
+                </div>
+            </div>
+            <div class="content-area">
+                <div class="feature-card col">
+                    <h3 style="color: #fff;">Pindrop (Pulse / BotStopper)</h3>
+                    <p>Protects enterprise call centers when fraudster calls in. <strong>Cannot protect subscribers</strong> when fraudster calls them.</p>
+                </div>
+                <div class="feature-card col">
+                    <h3 style="color: #fff;">Truecaller / Hiya</h3>
+                    <p>App-dependent; blocked by iOS/Android from touching live audio; zero coverage on landlines or non-smartphone seniors.</p>
+                </div>
+                <div class="feature-card col" style="border-color: var(--cyan); background: rgba(0, 242, 254, 0.05);">
+                    <h3 style="color: var(--cyan);">TeleGuard AI (Our Moat)</h3>
+                    <p>100% network reach from Day 1; zero app needed; language independent physical vocoder forensics; active acoustic certificate.</p>
+                </div>
+            </div>
+            <div class="slide-footer">
+                <span>Slide 6 of 10</span>
+                <span>Competitive Landscape</span>
+            </div>
+        </div>
+
+        <!-- Slide 7: Business Model & Pricing -->
+        <div class="slide">
+            <div class="slide-header">
+                <div>
+                    <span class="badge" style="color: var(--green); border-color: rgba(16, 185, 129, 0.3);">Business Model</span>
+                    <h2>B2B2C Telecom Economics & Unit Profitability</h2>
+                    <p class="subtitle">Aligning high-margin software with carrier VAS monetization.</p>
+                </div>
+            </div>
+            <div class="content-area">
+                <div class="col">
+                    <div class="feature-card">
+                        <h3>1. Wholesale B2B License (MNOs)</h3>
+                        <p><strong>$0.25 – $0.35</strong> per active subscriber / month wholesale. Carrier retails at <strong>$1.99 – $2.99 / mo</strong> (85% carrier gross margin).</p>
+                    </div>
+                    <div class="feature-card">
+                        <h3>2. Bank & FinTech Verification API</h3>
+                        <p><strong>$0.10</strong> per risk query via GSMA Open Gateway to verify call safety during high-value wire transfers, cutting APP fraud.</p>
+                    </div>
+                </div>
+                <div class="col">
+                    <div class="stat-grid">
+                        <div class="stat-box">
+                            <div class="stat-num">$0.022</div>
+                            <div class="stat-label">Our Monthly COGS / Active User</div>
+                        </div>
+                        <div class="stat-box">
+                            <div class="stat-num" style="color: var(--green);">92.5%</div>
+                            <div class="stat-label">Software Gross Profit Margin</div>
+                        </div>
+                    </div>
+                    <div class="feature-card">
+                        <h3>Churn Reduction Engine</h3>
+                        <p>Telcos bundle TeleGuard into senior & family plans, reducing subscriber churn by an estimated 15–20%.</p>
+                    </div>
+                </div>
+            </div>
+            <div class="slide-footer">
+                <span>Slide 7 of 10</span>
+                <span>Financial Strategy</span>
+            </div>
+        </div>
+
+        <!-- Slide 8: Traction & Validation -->
+        <div class="slide">
+            <div class="slide-header">
+                <div>
+                    <span class="badge">Traction Check</span>
+                    <h2>Customer & Market Validation (Ideathon Research)</h2>
+                    <p class="subtitle">Validating real willingness to pay and technical carrier feasibility.</p>
+                </div>
+            </div>
+            <div class="content-area">
+                <div class="col">
+                    <div class="stat-box" style="text-align: left; padding: 24px;">
+                        <div class="stat-num" style="color: var(--cyan);">91%</div>
+                        <p style="font-size: 14px; color: var(--text-sub); margin-top: 6px;">
+                            of interviewed adult children confirmed elderly parents will <strong>never install security apps</strong>. Zero-app telco solution validated as absolute requirement.
+                        </p>
+                    </div>
+                </div>
+                <div class="col">
+                    <div class="stat-box" style="text-align: left; padding: 24px;">
+                        <div class="stat-num" style="color: var(--green);">78%</div>
+                        <p style="font-size: 14px; color: var(--text-sub); margin-top: 6px;">
+                            of family plan decision-makers stated immediate willingness to pay <strong>$2–$3/mo</strong> on their mobile bill to protect elderly parents.
+                        </p>
+                    </div>
+                </div>
+            </div>
+            <div class="slide-footer">
+                <span>Slide 8 of 10</span>
+                <span>Traction & Customer Interviews</span>
+            </div>
+        </div>
+
+        <!-- Slide 9: Financial Projections & The Ask -->
+        <div class="slide">
+            <div class="slide-header">
+                <div>
+                    <span class="badge" style="color: var(--amber); border-color: rgba(245, 158, 11, 0.3);">Investment & Scale</span>
+                    <h2>$650,000 Seed Round • 18-Month Runway</h2>
+                    <p class="subtitle">Projected path to $23.9M ARR and Year 2 cash flow profitability.</p>
+                </div>
+            </div>
+            <div class="content-area">
+                <div class="col">
+                    <div class="feature-card">
+                        <h3>Use of Funds ($650k)</h3>
+                        <p><strong>45%</strong> R&D & Core Engineering (AI/DSP & SIP C++)<br>
+                           <strong>25%</strong> Edge GPU Cluster & Carrier Testbed<br>
+                           <strong>18%</strong> Carrier Pilots & GSMA Certification<br>
+                           <strong>12%</strong> IP Patents & Telecom Legal/Compliance</p>
+                    </div>
+                </div>
+                <div class="col">
+                    <div class="stat-grid">
+                        <div class="stat-box">
+                            <div class="stat-num">$1.4M</div>
+                            <div class="stat-label">Year 1 ARR (2 Carriers)</div>
+                        </div>
+                        <div class="stat-box">
+                            <div class="stat-num">$23.9M</div>
+                            <div class="stat-label">Year 3 ARR (14 Carriers)</div>
+                        </div>
+                    </div>
+                    <div class="feature-card">
+                        <h3>Break-Even Milestone</h3>
+                        <p>Projected at <strong>Month 14</strong> post-launch upon onboard of second commercial carrier contract.</p>
+                    </div>
+                </div>
+            </div>
+            <div class="slide-footer">
+                <span>Slide 9 of 10</span>
+                <span>Financial Forecast</span>
+            </div>
+        </div>
+
+        <!-- Slide 10: Team & Conclusion -->
+        <div class="slide">
+            <div class="slide-header">
+                <div>
+                    <span class="badge">Team & Mission</span>
+                    <h2>Restoring Trust to the Voice Channel</h2>
+                    <p class="subtitle">The right team to execute at the intersection of AI, telecom, and cyber.</p>
+                </div>
+            </div>
+            <div class="content-area">
+                <div class="feature-card col">
+                    <h3>AI & DSP Lead (Chief Scientist)</h3>
+                    <p>Dissertation research in acoustic physical inversion, generative regularities, and speech synthesis forensics.</p>
+                </div>
+                <div class="feature-card col">
+                    <h3>Telecom Core Architect</h3>
+                    <p>Expert in IMS/VoLTE, SIP/RTP protocol engines, Kamailio/FreeSWITCH, and carrier SLA 99.999% uptime.</p>
+                </div>
+                <div class="feature-card col">
+                    <h3>Business & Compliance Lead</h3>
+                    <p>Telecom VAS partnerships, banking fraud prevention integrations, and GDPR statutory compliance.</p>
+                </div>
+            </div>
+            <div class="slide-footer">
+                <span>Slide 10 of 10 • Ready for Sunday 17:30 Submission</span>
+                <span>Thank You! Questions & Discussion</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Navigation Controls -->
+    <div class="controls">
+        <button class="btn-ctrl" onclick="prevSlide()">← Prev</button>
+        <span id="slide-num" style="font-size: 12px; font-weight: 700; color: var(--cyan);">1 / 10</span>
+        <button class="btn-ctrl" onclick="nextSlide()">Next →</button>
+    </div>
+
+    <script>
+        let currentSlide = 0;
+        const slides = document.querySelectorAll('.slide');
+        const numDisplay = document.getElementById('slide-num');
+
+        function showSlide(idx) {
+            slides[currentSlide].classList.remove('active');
+            currentSlide = (idx + slides.length) % slides.length;
+            slides[currentSlide].classList.add('active');
+            numDisplay.textContent = `${currentSlide + 1} / ${slides.length}`;
+        }
+
+        function nextSlide() { showSlide(currentSlide + 1); }
+        function prevSlide() { showSlide(currentSlide - 1); }
+
+        window.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'PageDown') {
+                nextSlide();
+            } else if (e.key === 'ArrowLeft' || e.key === 'PageUp') {
+                prevSlide();
+            }
+        });
+    </script>
+</body>
+</html>

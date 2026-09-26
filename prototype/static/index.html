@@ -1,0 +1,695 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TeleGuard AI - In-Network Deepfake Voice Defense Demo</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-primary: #0a0e17;
+            --bg-secondary: #131b2e;
+            --bg-card: #18233c;
+            --border-color: #243456;
+            --accent-cyan: #00f2fe;
+            --accent-blue: #4facfe;
+            --accent-green: #00e676;
+            --accent-red: #ff3366;
+            --accent-amber: #ffab00;
+            --text-primary: #f0f4fc;
+            --text-secondary: #94a3b8;
+            --text-muted: #64748b;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background-color: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            padding: 24px;
+            display: flex;
+            flex-direction: column;
+            gap: 24px;
+        }
+
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 16px 24px;
+            background: linear-gradient(135deg, rgba(19, 27, 46, 0.8), rgba(24, 35, 60, 0.8));
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            backdrop-filter: blur(12px);
+        }
+
+        .logo-group {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .badge {
+            background: rgba(0, 242, 254, 0.15);
+            color: var(--accent-cyan);
+            border: 1px solid rgba(0, 242, 254, 0.3);
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+        }
+
+        .compliance-pills {
+            display: flex;
+            gap: 10px;
+        }
+
+        .pill {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 12px;
+            font-weight: 500;
+            padding: 6px 12px;
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid var(--border-color);
+        }
+
+        .pill-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--accent-green);
+            box-shadow: 0 0 8px var(--accent-green);
+        }
+
+        main {
+            display: grid;
+            grid-template-columns: 360px 1fr 340px;
+            gap: 24px;
+            flex: 1;
+        }
+
+        .card {
+            background-color: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .card-header {
+            font-size: 14px;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+            color: var(--text-secondary);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 12px;
+        }
+
+        /* Controls */
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        label {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-secondary);
+        }
+
+        select, input {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+            padding: 10px 14px;
+            border-radius: 8px;
+            font-family: inherit;
+            font-size: 13px;
+        }
+
+        .btn {
+            background: linear-gradient(135deg, var(--accent-cyan), var(--accent-blue));
+            color: #030a16;
+            border: none;
+            padding: 12px 18px;
+            border-radius: 8px;
+            font-weight: 700;
+            font-size: 13px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .btn:hover {
+            opacity: 0.9;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 16px rgba(0, 242, 254, 0.3);
+        }
+
+        .btn:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        /* Stream Waveform */
+        #waveform-canvas {
+            width: 100%;
+            height: 140px;
+            background: #080c14;
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+        }
+
+        /* Telemetry Grid */
+        .telemetry-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 12px;
+        }
+
+        .tele-stat {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            padding: 14px;
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .tele-val {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--accent-cyan);
+        }
+
+        .tele-lbl {
+            font-size: 11px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+        }
+
+        /* Threat Gauge */
+        .threat-meter-container {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            padding: 16px;
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .threat-bar-bg {
+            width: 100%;
+            height: 12px;
+            background: #0d1526;
+            border-radius: 6px;
+            overflow: hidden;
+            border: 1px solid var(--border-color);
+        }
+
+        .threat-bar-fill {
+            height: 100%;
+            width: 0%;
+            transition: width 0.3s ease, background-color 0.3s ease;
+            background-color: var(--accent-green);
+        }
+
+        /* Multi-Tier Diagnostic List */
+        .diag-item {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            font-size: 12px;
+        }
+
+        .diag-header {
+            display: flex;
+            justify-content: space-between;
+            font-weight: 600;
+        }
+
+        .metric-row {
+            display: flex;
+            justify-content: space-between;
+            color: var(--text-muted);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11px;
+        }
+
+        /* Alert Panel */
+        .alert-box {
+            border-radius: 8px;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            border: 1px dashed var(--border-color);
+            background: rgba(255, 255, 255, 0.02);
+            transition: all 0.3s ease;
+        }
+
+        .alert-active {
+            border: 1px solid var(--accent-red);
+            background: rgba(255, 51, 102, 0.12);
+            box-shadow: 0 0 20px rgba(255, 51, 102, 0.2);
+            animation: pulse-red 1.5s infinite;
+        }
+
+        @keyframes pulse-red {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.8; }
+        }
+
+        .phone-mockup {
+            background: #000;
+            border: 2px solid #334155;
+            border-radius: 16px;
+            padding: 14px;
+            color: white;
+            font-size: 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .phone-screen {
+            background: #1e293b;
+            border-radius: 8px;
+            padding: 12px;
+            min-height: 80px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            font-size: 11px;
+            line-height: 1.4;
+        }
+
+        .log-terminal {
+            background: #06090f;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 12px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11px;
+            color: #10b981;
+            height: 140px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="logo-group">
+            <h1 style="font-size: 20px; font-weight: 800; letter-spacing: -0.5px;">TeleGuard AI</h1>
+            <span class="badge">In-Network SBC Voice Shield</span>
+        </div>
+        <div class="compliance-pills">
+            <div class="pill">
+                <div class="pill-dot"></div>
+                Zero Disk Recording (GDPR Ephemeral RAM)
+            </div>
+            <div class="pill">
+                <div class="pill-dot"></div>
+                SBC RTP Mirroring (< 25ms SLA)
+            </div>
+            <div class="pill">
+                <div class="pill-dot"></div>
+                Zero-App Universal Coverage
+            </div>
+        </div>
+    </header>
+
+    <main>
+        <!-- Column 1: Call Control -->
+        <section class="card">
+            <div class="card-header">
+                <span>Telecom Call Simulator</span>
+                <span style="font-size: 11px; color: var(--accent-cyan);">IMS Core</span>
+            </div>
+
+            <div class="control-group">
+                <label>Protected Subscriber (Callee)</label>
+                <input type="text" id="callee-number" value="+374 (91) 40-11-22 (Grandmother / Landline)" readonly>
+            </div>
+
+            <div class="control-group">
+                <label>Inbound Caller Profile</label>
+                <select id="caller-scenario">
+                    <option value="human">Authentic Family Relative (Human Voice)</option>
+                    <option value="synthetic_opensource" selected>Open-Source Cloned Voice (XTTS / StyleTTS2)</option>
+                    <option value="synthetic_watermarked">Commercial Cloned Voice (SynthID / ElevenLabs)</option>
+                </select>
+            </div>
+
+            <div class="control-group">
+                <label>Call Content / Context</label>
+                <input type="text" id="call-claim" value="Emergency bail transfer request ($3,500)">
+            </div>
+
+            <button class="btn" id="start-call-btn" onclick="startCallSimulation()">
+                Initiate In-Network Call Inspection
+            </button>
+            <button class="btn" id="stop-call-btn" onclick="stopCallSimulation()" style="background: #334155; color: white;" disabled>
+                Terminate Call Session
+            </button>
+
+            <div style="margin-top: auto; font-size: 11px; color: var(--text-muted); line-height: 1.5;">
+                <strong>Network Vantage Point:</strong> Inspection occurs within the mobile network operator's Session Border Controller (SBC) using non-intrusive RTP stream bifurcation.
+            </div>
+        </section>
+
+        <!-- Column 2: Live In-Network Inspection & Forensics -->
+        <section class="card" style="gap: 20px;">
+            <div class="card-header">
+                <span>Real-Time Side-Channel DSP Telemetry</span>
+                <span id="call-status-badge" style="color: var(--text-muted); font-size: 11px;">STANDBY</span>
+            </div>
+
+            <!-- Waveform Canvas -->
+            <div style="display: flex; flex-direction: column; gap: 8px;">
+                <div style="display: flex; justify-content: space-between; font-size: 11px; color: var(--text-muted);">
+                    <span>Live RTP Audio Stream (400ms Ephemeral RAM Window)</span>
+                    <span id="stream-rate">16.0 kHz / 16-bit PCM</span>
+                </div>
+                <canvas id="waveform-canvas"></canvas>
+            </div>
+
+            <!-- Telemetry Stats -->
+            <div class="telemetry-grid">
+                <div class="tele-stat">
+                    <div class="tele-val" id="latency-display">0.0 ms</div>
+                    <div class="tele-lbl">Inference Latency</div>
+                </div>
+                <div class="tele-stat">
+                    <div class="tele-val" id="frames-display">0</div>
+                    <div class="tele-lbl">Frames Analyzed</div>
+                </div>
+                <div class="tele-stat">
+                    <div class="tele-val" id="tier-display">STANDBY</div>
+                    <div class="tele-lbl">Active Stage</div>
+                </div>
+            </div>
+
+            <!-- Threat Probability Meter -->
+            <div class="threat-meter-container">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span style="font-size: 13px; font-weight: 700;">Synthetic Voice Probability</span>
+                    <span id="threat-score-val" style="font-family: 'JetBrains Mono'; font-size: 18px; font-weight: 800; color: var(--accent-green);">0.0%</span>
+                </div>
+                <div class="threat-bar-bg">
+                    <div class="threat-bar-fill" id="threat-bar"></div>
+                </div>
+                <div style="display: flex; justify-content: space-between; font-size: 11px; color: var(--text-muted);">
+                    <span>0% (Human Speech)</span>
+                    <span>50% Suspicious</span>
+                    <span>80%+ Critical Alert</span>
+                </div>
+            </div>
+
+            <!-- Real-time Diagnostic Breakdowns -->
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                <div class="diag-item">
+                    <div class="diag-header">
+                        <span>Vocoder Phase Artifacts</span>
+                        <span id="diag-phase" style="color: var(--accent-cyan);">--</span>
+                    </div>
+                    <div class="metric-row">
+                        <span>Harmonic Dispersion:</span>
+                        <span id="metric-dispersion">0.00</span>
+                    </div>
+                </div>
+
+                <div class="diag-item">
+                    <div class="diag-header">
+                        <span>LPC Glottal Regularity</span>
+                        <span id="diag-glottal" style="color: var(--accent-cyan);">--</span>
+                    </div>
+                    <div class="metric-row">
+                        <span>Residual Entropy:</span>
+                        <span id="metric-entropy">4.10 bits</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Live Logs Terminal -->
+            <div class="log-terminal" id="log-output">
+                <div>[SYSTEM READY] TeleGuard SBC Side-Channel Tap Daemon initialized.</div>
+                <div>[SYSTEM READY] Ephemeral circular RAM allocated (32k samples).</div>
+            </div>
+        </section>
+
+        <!-- Column 3: Zero-App In-Call Alerts -->
+        <section class="card">
+            <div class="card-header">
+                <span>Zero-App Intervention</span>
+                <span style="font-size: 11px; color: var(--accent-green);">Direct to Phone</span>
+            </div>
+
+            <!-- In-Call Audio Whisper Alert -->
+            <div class="alert-box" id="whisper-alert-box">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <strong style="font-size: 13px;">In-Call Audio Whisper</strong>
+                    <span id="whisper-status" style="font-size: 11px; font-weight: 700; color: var(--text-muted);">INACTIVE</span>
+                </div>
+                <p style="font-size: 11px; color: var(--text-secondary); line-height: 1.4;">
+                    Injected into subscriber's downlink RTP stream. Caller cannot hear this message.
+                </p>
+                <div style="background: rgba(0,0,0,0.3); border-radius: 6px; padding: 10px; font-size: 11px; font-style: italic; color: #cbd5e1;">
+                    "⚠️ Notice: This voice appears to be artificially generated. Do not send funds."
+                </div>
+            </div>
+
+            <!-- Handset Screen Simulation -->
+            <div style="display: flex; flex-direction: column; gap: 8px;">
+                <label>Subscriber Phone (Feature Phone / Landline)</label>
+                <div class="phone-mockup">
+                    <div style="display: flex; justify-content: space-between; color: #94a3b8; font-size: 10px;">
+                        <span>VIVA-MTS 4G</span>
+                        <span>100%</span>
+                    </div>
+                    <div class="phone-screen" id="phone-display">
+                        <span style="color: #38bdf8; font-weight: 700;">Incoming Call Active</span>
+                        <span style="font-size: 10px; color: #94a3b8;">+1 (415) 890-4421</span>
+                        <span style="font-size: 9px; color: #64748b; margin-top: 4px;">Call Duration: 00:14</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Stage 3: Noise Certificate Verification -->
+            <div class="diag-item" style="margin-top: auto;">
+                <div class="diag-header">
+                    <span>Acoustic Noise Certificate</span>
+                    <span id="cert-status" style="color: var(--accent-green);">ARMED</span>
+                </div>
+                <div class="metric-row">
+                    <span>Subscriber Token:</span>
+                    <span>SHA256: 4f9a...3c21</span>
+                </div>
+                <div class="metric-row">
+                    <span>Challenge Status:</span>
+                    <span id="challenge-verdict">Awaiting Trigger</span>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <script>
+        let isRunning = false;
+        let animationFrameId = null;
+        let callInterval = null;
+        let frameCount = 0;
+
+        const canvas = document.getElementById('waveform-canvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = canvas.parentElement.clientWidth;
+        canvas.height = 140;
+
+        function appendLog(msg, color = '#10b981') {
+            const out = document.getElementById('log-output');
+            const div = document.createElement('div');
+            div.style.color = color;
+            div.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+            out.appendChild(div);
+            out.scrollTop = out.scrollHeight;
+        }
+
+        function drawWaveform(isSynthetic) {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.lineWidth = 2;
+            ctx.strokeStyle = isSynthetic ? '#ff3366' : '#00f2fe';
+            ctx.beginPath();
+
+            const sliceWidth = canvas.width / 100;
+            let x = 0;
+
+            for (let i = 0; i < 100; i++) {
+                const t = (i + frameCount * 3) * 0.1;
+                let v = 0;
+                if (isSynthetic) {
+                    // Harsh mechanical square-ish harmonics
+                    v = Math.sin(t) * 0.5 + Math.sin(t * 3) * 0.3 + (Math.random() - 0.5) * 0.1;
+                } else {
+                    // Smooth human vocal formants
+                    v = Math.sin(t * 0.8) * 0.6 + Math.sin(t * 1.6) * 0.2 + (Math.random() - 0.5) * 0.2;
+                }
+                const y = (v * 45) + (canvas.height / 2);
+
+                if (i === 0) ctx.moveTo(x, y);
+                else ctx.lineTo(x, y);
+
+                x += sliceWidth;
+            }
+            ctx.stroke();
+        }
+
+        async function startCallSimulation() {
+            isRunning = true;
+            frameCount = 0;
+            document.getElementById('start-call-btn').disabled = true;
+            document.getElementById('stop-call-btn').disabled = false;
+            document.getElementById('call-status-badge').textContent = 'ACTIVE INSPECTION';
+            document.getElementById('call-status-badge').style.color = '#00f2fe';
+
+            const scenario = document.getElementById('caller-scenario').value;
+            appendLog(`Call connected to SBC. Bifurcating RTP audio packets into volatile RAM...`);
+            appendLog(`Scenario: ${scenario.toUpperCase()}`);
+
+            callInterval = setInterval(async () => {
+                frameCount++;
+                try {
+                    const resp = await fetch('/api/process-frame', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ scenario: scenario, frame: frameCount })
+                    });
+                    const data = await resp.json();
+                    updateUI(data);
+                } catch (e) {
+                    console.error(e);
+                }
+            }, 400);
+
+            renderWave();
+        }
+
+        function renderWave() {
+            if (!isRunning) return;
+            const scenario = document.getElementById('caller-scenario').value;
+            const isSynth = scenario.includes('synthetic') && frameCount > 2;
+            drawWaveform(isSynth);
+            animationFrameId = requestAnimationFrame(renderWave);
+        }
+
+        function updateUI(data) {
+            document.getElementById('frames-display').textContent = data.frame_index;
+            document.getElementById('latency-display').textContent = `${data.processing_latency_ms.toFixed(1)} ms`;
+            document.getElementById('tier-display').textContent = data.detection_tier_used.replace('TIER_', 'T');
+
+            const scorePct = Math.round(data.synthetic_score * 100);
+            const scoreVal = document.getElementById('threat-score-val');
+            const bar = document.getElementById('threat-bar');
+            scoreVal.textContent = `${scorePct}%`;
+            bar.style.width = `${scorePct}%`;
+
+            if (scorePct >= 80) {
+                scoreVal.style.color = '#ff3366';
+                bar.style.backgroundColor = '#ff3366';
+            } else if (scorePct >= 50) {
+                scoreVal.style.color = '#ffab00';
+                bar.style.backgroundColor = '#ffab00';
+            } else {
+                scoreVal.style.color = '#00e676';
+                bar.style.backgroundColor = '#00e676';
+            }
+
+            // Metrics
+            if (data.stage_details) {
+                if (data.stage_details.vocoder_phase_discontinuity !== undefined) {
+                    document.getElementById('diag-phase').textContent = data.stage_details.vocoder_phase_discontinuity > 0.6 ? 'ANOMALY' : 'NORMAL';
+                    document.getElementById('metric-dispersion').textContent = data.stage_details.vocoder_phase_discontinuity.toFixed(3);
+                }
+                if (data.stage_details.glottal_residual_regularity !== undefined) {
+                    document.getElementById('diag-glottal').textContent = data.stage_details.glottal_residual_regularity > 0.6 ? 'COLLAPSED' : 'NATURAL';
+                    document.getElementById('metric-entropy').textContent = data.stage_details.glottal_residual_regularity > 0.6 ? '2.14 bits' : '4.22 bits';
+                }
+            }
+
+            // Alerts
+            const whisperBox = document.getElementById('whisper-alert-box');
+            const whisperStatus = document.getElementById('whisper-status');
+            const phoneDisplay = document.getElementById('phone-display');
+
+            if (data.alert_delivered.in_call_whisper) {
+                whisperBox.classList.add('alert-active');
+                whisperStatus.textContent = 'INJECTED (12dB MIX)';
+                whisperStatus.style.color = '#ff3366';
+
+                phoneDisplay.innerHTML = `
+                    <div style="background: #dc2626; color: white; padding: 4px 8px; border-radius: 4px; font-weight: 800; font-size: 10px; margin-bottom: 4px;">
+                        ⚠️ FLASH-SMS POPUP
+                    </div>
+                    <strong style="color: #fecaca; font-size: 11px;">AI Voice Clone Warning!</strong>
+                    <span style="font-size: 9px; color: #f87171; margin-top: 2px;">Hang up immediately. Do not transfer money.</span>
+                `;
+
+                appendLog(`[ALERT] In-call whisper tone injected into downlink RTP. Flash SMS transmitted.`, '#ff3366');
+            } else {
+                whisperBox.classList.remove('alert-active');
+                whisperStatus.textContent = 'INACTIVE';
+                whisperStatus.style.color = '#64748b';
+            }
+
+            if (data.challenge_results) {
+                document.getElementById('challenge-verdict').textContent = data.challenge_results.verdict;
+                document.getElementById('challenge-verdict').style.color = data.challenge_results.authenticated ? '#00e676' : '#ff3366';
+            }
+        }
+
+        function stopCallSimulation() {
+            isRunning = false;
+            clearInterval(callInterval);
+            cancelAnimationFrame(animationFrameId);
+            document.getElementById('start-call-btn').disabled = false;
+            document.getElementById('stop-call-btn').disabled = true;
+            document.getElementById('call-status-badge').textContent = 'CALL TERMINATED';
+            document.getElementById('call-status-badge').style.color = '#94a3b8';
+            appendLog(`Call terminated by subscriber. Ephemeral memory buffer cleared.`);
+        }
+    </script>
+</body>
+</html>
