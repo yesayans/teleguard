@@ -369,8 +369,9 @@
 
             <div class="control-group">
                 <label>Inbound Caller Profile</label>
-                <select id="caller-scenario">
-                    <option value="human">Authentic Family Relative (Human Voice)</option>
+                <select id="caller-scenario" onchange="handleScenarioChange()">
+                    <option value="human">Authentic Family Relative (Human Voice Simulation)</option>
+                    <option value="live_mic">🎙️ Live Microphone Input (Test Your Own Voice Live)</option>
                     <option value="synthetic_opensource" selected>Open-Source Cloned Voice (XTTS / StyleTTS2)</option>
                     <option value="synthetic_watermarked">Commercial Cloned Voice (SynthID / ElevenLabs)</option>
                 </select>
@@ -513,12 +514,16 @@
             <!-- Stage 3: Noise Certificate Verification -->
             <div class="diag-item" style="margin-top: auto;">
                 <div class="diag-header">
-                    <span>Acoustic Noise Certificate</span>
-                    <span id="cert-status" style="color: var(--accent-green);">ARMED</span>
+                    <span>Rolling Acoustic Certificate</span>
+                    <span id="cert-status" style="color: var(--accent-green);">REPLAY-IMMUNE</span>
                 </div>
                 <div class="metric-row">
-                    <span>Subscriber Token:</span>
-                    <span>SHA256: 4f9a...3c21</span>
+                    <span>Epoch Fingerprint:</span>
+                    <span id="cert-fp">Syncing...</span>
+                </div>
+                <div class="metric-row">
+                    <span>Epoch Rotation:</span>
+                    <span id="cert-countdown" style="color: var(--accent-cyan);">Rotating in 30s</span>
                 </div>
                 <div class="metric-row">
                     <span>Challenge Status:</span>
@@ -533,11 +538,25 @@
         let animationFrameId = null;
         let callInterval = null;
         let frameCount = 0;
+        let audioCtx = null;
+        let micStream = null;
+        let micProcessor = null;
+        let audioAlertPlayed = false;
 
         const canvas = document.getElementById('waveform-canvas');
         const ctx = canvas.getContext('2d');
         canvas.width = canvas.parentElement.clientWidth;
         canvas.height = 140;
+
+        // Periodic Certificate Status Polling (Every 1s)
+        setInterval(async () => {
+            try {
+                const resp = await fetch('/api/certificate/status');
+                const data = await resp.json();
+                document.getElementById('cert-fp').textContent = data.certificate_fingerprint;
+                document.getElementById('cert-countdown').textContent = `Rotating in ${data.seconds_remaining_in_epoch}s (Epoch #${data.current_epoch})`;
+            } catch (e) {}
+        }, 1000);
 
         function appendLog(msg, color = '#10b981') {
             const out = document.getElementById('log-output');
@@ -548,7 +567,33 @@
             out.scrollTop = out.scrollHeight;
         }
 
-        function drawWaveform(isSynthetic) {
+        function playInCallAudioWhisperChime() {
+            if (audioAlertPlayed) return;
+            audioAlertPlayed = true;
+            try {
+                const actx = new (window.AudioContext || window.webkitAudioContext)();
+                const osc = actx.createOscillator();
+                const gain = actx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(880, actx.currentTime); // A5
+                osc.frequency.exponentialRampToValueAtTime(440, actx.currentTime + 0.35); // A4
+                gain.gain.setValueAtTime(0.2, actx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, actx.currentTime + 0.35);
+                osc.connect(gain);
+                gain.connect(actx.destination);
+                osc.start();
+                osc.stop(actx.currentTime + 0.4);
+            } catch (e) {}
+        }
+
+        function handleScenarioChange() {
+            const scenario = document.getElementById('caller-scenario').value;
+            if (scenario === 'live_mic') {
+                appendLog(`[MODE] Live Microphone selected. Click 'Initiate' and speak into your mic!`, '#00f2fe');
+            }
+        }
+
+        function drawWaveform(isSynthetic, liveAudioBuffer = null) {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             ctx.lineWidth = 2;
             ctx.strokeStyle = isSynthetic ? '#ff3366' : '#00f2fe';
@@ -558,13 +603,15 @@
             let x = 0;
 
             for (let i = 0; i < 100; i++) {
-                const t = (i + frameCount * 3) * 0.1;
                 let v = 0;
-                if (isSynthetic) {
-                    // Harsh mechanical square-ish harmonics
+                if (liveAudioBuffer && liveAudioBuffer.length > 0) {
+                    const idx = Math.floor(i * (liveAudioBuffer.length / 100));
+                    v = liveAudioBuffer[idx] * 2.5;
+                } else if (isSynthetic) {
+                    const t = (i + frameCount * 3) * 0.1;
                     v = Math.sin(t) * 0.5 + Math.sin(t * 3) * 0.3 + (Math.random() - 0.5) * 0.1;
                 } else {
-                    // Smooth human vocal formants
+                    const t = (i + frameCount * 3) * 0.1;
                     v = Math.sin(t * 0.8) * 0.6 + Math.sin(t * 1.6) * 0.2 + (Math.random() - 0.5) * 0.2;
                 }
                 const y = (v * 45) + (canvas.height / 2);
@@ -580,6 +627,7 @@
         async function startCallSimulation() {
             isRunning = true;
             frameCount = 0;
+            audioAlertPlayed = false;
             document.getElementById('start-call-btn').disabled = true;
             document.getElementById('stop-call-btn').disabled = false;
             document.getElementById('call-status-badge').textContent = 'ACTIVE INSPECTION';
@@ -587,24 +635,70 @@
 
             const scenario = document.getElementById('caller-scenario').value;
             appendLog(`Call connected to SBC. Bifurcating RTP audio packets into volatile RAM...`);
-            appendLog(`Scenario: ${scenario.toUpperCase()}`);
 
-            callInterval = setInterval(async () => {
-                frameCount++;
+            if (scenario === 'live_mic') {
+                // Initialize Live Web Audio API microphone capture
                 try {
-                    const resp = await fetch('/api/process-frame', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ scenario: scenario, frame: frameCount })
-                    });
-                    const data = await resp.json();
-                    updateUI(data);
-                } catch (e) {
-                    console.error(e);
-                }
-            }, 400);
+                    micStream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, sampleRate: 16000 } });
+                    audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+                    const source = audioCtx.createMediaStreamSource(micStream);
+                    // Use script processor to buffer ~400ms chunks (4096 samples @ 16kHz ~= 256ms)
+                    micProcessor = audioCtx.createScriptProcessor(4096, 1, 1);
+                    
+                    let pcmAccumulator = [];
 
-            renderWave();
+                    micProcessor.onaudioprocess = async (e) => {
+                        if (!isRunning) return;
+                        const channelData = e.inputBuffer.getChannelData(0);
+                        pcmAccumulator.push(...channelData);
+
+                        if (pcmAccumulator.length >= 6400) { // 400ms
+                            const chunk = pcmAccumulator.slice(0, 6400);
+                            pcmAccumulator = pcmAccumulator.slice(6400);
+                            frameCount++;
+
+                            drawWaveform(false, chunk);
+
+                            try {
+                                const resp = await fetch('/api/process-live-audio', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ samples: Array.from(chunk), response_latency_ms: 240.0 })
+                                });
+                                const data = await resp.json();
+                                updateUI(data);
+                            } catch (err) {
+                                console.error(err);
+                            }
+                        }
+                    };
+
+                    source.connect(micProcessor);
+                    micProcessor.connect(audioCtx.destination);
+                    appendLog(`[MIC ACTIVE] Speaking directly into live in-network DSP inspector!`, '#00f2fe');
+                } catch (err) {
+                    appendLog(`Microphone access error: ${err.message}`, '#ff3366');
+                    stopCallSimulation();
+                }
+            } else {
+                appendLog(`Scenario: ${scenario.toUpperCase()}`);
+                callInterval = setInterval(async () => {
+                    frameCount++;
+                    try {
+                        const resp = await fetch('/api/process-frame', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ scenario: scenario, frame: frameCount })
+                        });
+                        const data = await resp.json();
+                        updateUI(data);
+                    } catch (e) {
+                        console.error(e);
+                    }
+                }, 400);
+
+                renderWave();
+            }
         }
 
         function renderWave() {
@@ -667,6 +761,7 @@
                     <span style="font-size: 9px; color: #f87171; margin-top: 2px;">Hang up immediately. Do not transfer money.</span>
                 `;
 
+                playInCallAudioWhisperChime();
                 appendLog(`[ALERT] In-call whisper tone injected into downlink RTP. Flash SMS transmitted.`, '#ff3366');
             } else {
                 whisperBox.classList.remove('alert-active');
@@ -684,6 +779,18 @@
             isRunning = false;
             clearInterval(callInterval);
             cancelAnimationFrame(animationFrameId);
+            if (micProcessor) {
+                micProcessor.disconnect();
+                micProcessor = null;
+            }
+            if (micStream) {
+                micStream.getTracks().forEach(t => t.stop());
+                micStream = null;
+            }
+            if (audioCtx) {
+                audioCtx.close();
+                audioCtx = null;
+            }
             document.getElementById('start-call-btn').disabled = false;
             document.getElementById('stop-call-btn').disabled = true;
             document.getElementById('call-status-badge').textContent = 'CALL TERMINATED';

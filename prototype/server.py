@@ -25,6 +25,30 @@ class ProcessFrameRequest(BaseModel):
     scenario: str
     frame: int
 
+class ProcessLiveAudioRequest(BaseModel):
+    samples: list[float]
+    response_latency_ms: float = 220.0
+
+@app.post("/api/process-live-audio")
+async def process_live_audio(req: ProcessLiveAudioRequest):
+    samples_np = np.array(req.samples, dtype=np.float32)
+    # Resample or pad/slice to 400ms window (6400 samples at 16kHz)
+    if len(samples_np) > 0:
+        result = pipeline.process_incoming_rtp_chunk(samples_np, response_latency_ms=req.response_latency_ms)
+    else:
+        result = {"error": "Empty audio buffer"}
+    return result
+
+@app.get("/api/certificate/status")
+async def get_cert_status():
+    cert_info = pipeline.certificate_engine.get_current_certificate()
+    return {
+        "subscriber_id": cert_info["subscriber_id"],
+        "current_epoch": cert_info["epoch"],
+        "seconds_remaining_in_epoch": cert_info["seconds_remaining"],
+        "certificate_fingerprint": cert_info["certificate_fingerprint"]
+    }
+
 @app.get("/", response_class=HTMLResponse)
 async def serve_index():
     index_path = os.path.join(os.path.dirname(__file__), "static", "index.html")
