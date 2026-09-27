@@ -36,27 +36,29 @@ def generate_synthetic_voice_sample(duration_sec: float = 2.0, sample_rate: int 
 def generate_human_voice_sample(duration_sec: float = 2.0, sample_rate: int = 16000) -> np.ndarray:
     """
     Simulates authentic human speech:
-    - Biological vocal fold micro-jitter (pitch tremor var_d in 0.003 - 0.012)
+    - Biological vocal fold micro-jitter & 8-12 Hz laryngeal physiological tremor
     - Natural glottal excitation pulses filtered by vocal tract formants
-    - Natural unvoiced aerodynamic turbulence
+    - Natural turbulent Bernoulli glottal airflow aspiration
     """
     t = np.linspace(0, duration_sec, int(sample_rate * duration_sec), endpoint=False)
     f0_base = 130.0
     
-    # Natural biological micro-jitter
-    jitter_drift = 1.0 + 0.02 * np.sin(2 * np.pi * 4.5 * t) + np.random.normal(0, 0.004, len(t))
+    # Natural biological micro-jitter & 8-12 Hz neuromuscular physiological tremor
+    jitter_drift = 1.0 + 0.012 * np.sin(2 * np.pi * 9.5 * t) + np.random.normal(0, 0.006, len(t))
     phase = 2 * np.pi * np.cumsum(f0_base * jitter_drift) / sample_rate
     
     signal = np.zeros_like(t)
-    # Formant filtering (vocal tract body: 750Hz, 1400Hz, 2800Hz)
-    for h in range(1, 14):
+    # Formant filtering (vocal tract body: 750Hz, 1400Hz, 2800Hz) with natural high-frequency loss
+    for h in range(1, 20):
         freq = h * f0_base
-        formant = np.exp(-((freq - 750)**2)/70000) + 0.7 * np.exp(-((freq - 1400)**2)/90000) + 0.3 * np.exp(-((freq - 2800)**2)/120000) + 0.15
-        shimmer = 1.0 + np.random.normal(0, 0.03, len(t))
+        formant = np.exp(-((freq - 750)**2)/70000) + 0.7 * np.exp(-((freq - 1400)**2)/90000) + 0.3 * np.exp(-((freq - 2600)**2)/120000)
+        if freq < 3400:
+            formant += 0.08 * np.exp(-((freq - 3200)**2)/150000)
+        shimmer = 1.0 + np.random.normal(0, 0.04, len(t))
         signal += (formant / h) * shimmer * np.sin(h * phase)
         
-    # Natural turbulent airflow
-    signal += np.random.normal(0, 0.04, len(t))
+    # Natural turbulent aspiration airflow
+    signal += np.random.normal(0, 0.035, len(t))
     signal = signal / (np.max(np.abs(signal)) + 1e-6)
     return signal.astype(np.float32)
 

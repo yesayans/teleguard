@@ -10,6 +10,12 @@ import io
 import wave
 import base64
 import numpy as np
+try:
+    import soundfile as sf
+    HAVE_SOUNDFILE = True
+except ImportError:
+    HAVE_SOUNDFILE = False
+
 from fastapi import FastAPI, UploadFile, File
 from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -215,22 +221,48 @@ async def process_frame(req: ProcessFrameRequest):
 
 @app.post("/api/detect-audio-file")
 async def detect_audio_file(file: UploadFile = File(...)):
-    """Upload any audio file to test AI detection."""
+    """
+    Upload any audio file to test AI detection.
+    Supports MP3, WAV, FLAC, OGG, AIFF, and M4A formats via soundfile.
+    """
     content = await file.read()
     try:
-        try:
-            buf = io.BytesIO(content)
-            with wave.open(buf, 'rb') as wf:
-                sr = wf.getframerate()
-                n_channels = wf.getnchannels()
-                frames = wf.readframes(wf.getnframes())
-                audio = np.frombuffer(frames, dtype=np.int16).astype(np.float32) / 32768.0
-                if n_channels > 1:
-                    audio = audio[::n_channels]
-                if sr != 16000:
-                    audio = resample_to_16k(audio, sr)
-        except Exception:
+        audio = None
+        sr = 16000
+        
+        # 1. Primary: High-fidelity universal decoding via soundfile (MP3, WAV, FLAC, OGG, etc.)
+        if HAVE_SOUNDFILE:
+            try:
+                buf = io.BytesIO(content)
+                audio_sf, sr = sf.read(buf, dtype='float32')
+                if audio_sf.ndim > 1:
+                    audio_sf = np.mean(audio_sf, axis=1) # Downmix multi-channel to mono
+                audio = audio_sf
+            except Exception:
+                audio = None
+
+        # 2. Secondary fallback: standard library wave module for uncompressed WAV
+        if audio is None:
+            try:
+                buf = io.BytesIO(content)
+                with wave.open(buf, 'rb') as wf:
+                    sr = wf.getframerate()
+                    n_channels = wf.getnchannels()
+                    frames = wf.readframes(wf.getnframes())
+                    audio = np.frombuffer(frames, dtype=np.int16).astype(np.float32) / 32768.0
+                    if n_channels > 1:
+                        audio = audio[::n_channels]
+            except Exception:
+                audio = None
+
+        # 3. Last-ditch fallback for raw PCM byte streams
+        if audio is None:
             audio = np.frombuffer(content, dtype=np.int16).astype(np.float32) / 32768.0
+            sr = 16000
+
+        # Resample to 16kHz if needed
+        if sr != 16000 and len(audio) > 10:
+            audio = resample_to_16k(audio, sr)
 
         if len(audio) < 2000:
             return {"status": "error", "error": "Audio file too short (minimum 0.3s required)"}

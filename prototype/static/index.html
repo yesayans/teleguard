@@ -497,7 +497,11 @@
             </div>
 
             <!-- Telemetry Metrics Grid -->
-            <div class="metric-grid" style="grid-template-columns: repeat(4, 1fr);">
+            <div class="metric-grid" style="grid-template-columns: repeat(3, 1fr); gap: 8px;">
+                <div class="metric-card">
+                    <div class="metric-val" id="metric-tremor">-- %</div>
+                    <div class="metric-lbl">Neuromuscular Tremor (8-12Hz)</div>
+                </div>
                 <div class="metric-card">
                     <div class="metric-val" id="metric-jitter">-- %</div>
                     <div class="metric-lbl">Micro-Jitter (RAP)</div>
@@ -507,12 +511,16 @@
                     <div class="metric-lbl">Harmonic Contrast (HPP)</div>
                 </div>
                 <div class="metric-card">
-                    <div class="metric-val" id="metric-shimmer">-- %</div>
-                    <div class="metric-lbl">Glottal Shimmer (APQ3)</div>
+                    <div class="metric-val" id="metric-hf-comb">--</div>
+                    <div class="metric-lbl">Vocoder Comb (2.8-7.2kHz)</div>
                 </div>
                 <div class="metric-card">
                     <div class="metric-val" id="metric-zscore">--</div>
                     <div class="metric-lbl">Dissertation Z-Score</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-val" id="metric-shimmer">-- %</div>
+                    <div class="metric-lbl">Glottal Shimmer (APQ3)</div>
                 </div>
             </div>
 
@@ -904,12 +912,25 @@
             // Biometric Telemetry
             if (data.biometrics) {
                 const b = data.biometrics;
+
+                // 1. Neuromuscular Tremor (8-12Hz)
+                if (b.laryngeal_tremor_pct !== undefined) {
+                    const trmEl = document.getElementById('metric-tremor');
+                    if (trmEl) {
+                        trmEl.textContent = `${b.laryngeal_tremor_pct.toFixed(3)}%`;
+                        trmEl.style.color = b.laryngeal_tremor_pct < 0.20 ? '#ef4444' : '#10b981';
+                    }
+                }
+
+                // 2. Micro-Jitter RAP
                 const jitterVal = b.pitch_jitter_rap_pct !== undefined ? b.pitch_jitter_rap_pct : b.pitch_jitter_pct;
                 if (jitterVal !== undefined) {
                     const jitEl = document.getElementById('metric-jitter');
                     jitEl.textContent = `${jitterVal.toFixed(3)}%`;
-                    jitEl.style.color = jitterVal < 0.025 ? '#ef4444' : '#10b981';
+                    jitEl.style.color = jitterVal < 0.040 ? '#ef4444' : '#10b981';
                 }
+
+                // 3. Harmonic Contrast HPP
                 const hppVal = b.harmonic_peak_prominence;
                 if (hppVal !== undefined) {
                     const hppEl = document.getElementById('metric-hpp');
@@ -918,14 +939,28 @@
                         hppEl.style.color = hppVal > 48.0 ? '#ef4444' : '#10b981';
                     }
                 }
-                const shimmerVal = b.amplitude_shimmer_apq3_pct !== undefined ? b.amplitude_shimmer_apq3_pct : b.amplitude_shimmer_pct;
-                if (shimmerVal !== undefined) {
-                    document.getElementById('metric-shimmer').textContent = `${shimmerVal.toFixed(3)}%`;
+
+                // 4. Vocoder Comb (2.8-7.2kHz Periodicity)
+                const hfVal = b.high_freq_comb_periodicity !== undefined ? b.high_freq_comb_periodicity : b.high_freq_comb_peakiness;
+                if (hfVal !== undefined) {
+                    const hfEl = document.getElementById('metric-hf-comb');
+                    if (hfEl) {
+                        hfEl.textContent = `${hfVal.toFixed(3)}`;
+                        hfEl.style.color = hfVal > 0.20 ? '#ef4444' : '#10b981';
+                    }
                 }
+
+                // 5. Dissertation Z-Score
                 if (b.dissertation_z_score !== undefined) {
                     const zEl = document.getElementById('metric-zscore');
                     zEl.textContent = `Z = ${b.dissertation_z_score.toFixed(2)}`;
                     zEl.style.color = b.dissertation_z_score > 3.34 ? '#ef4444' : '#38bdf8';
+                }
+
+                // 6. Glottal Shimmer APQ3
+                const shimmerVal = b.amplitude_shimmer_apq3_pct !== undefined ? b.amplitude_shimmer_apq3_pct : b.amplitude_shimmer_pct;
+                if (shimmerVal !== undefined) {
+                    document.getElementById('metric-shimmer').textContent = `${shimmerVal.toFixed(3)}%`;
                 }
             }
 
