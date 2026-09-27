@@ -37,8 +37,7 @@ class PredictiveSyntheticVoiceDetector:
         if len(audio) <= p * 2:
             return np.zeros_like(audio)
 
-        r = np.correlate(audio, audio, mode='full')
-        r = r[len(audio) - 1 : len(audio) - 1 + p + 1]
+        r = np.array([np.dot(audio[:len(audio)-k], audio[k:]) for k in range(p + 1)], dtype=np.float64)
         
         if r[0] < 1e-9:
             return audio

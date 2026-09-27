@@ -119,16 +119,37 @@ async def analyze_recording(req: AnalyzeRecordingRequest):
     result["audio_data_url"] = audio_url
     return sanitize_for_json(result)
 
+def add_room_acoustics(sig: np.ndarray, fs: int = 16000, noise_level: float = 0.035, add_reverb: bool = True) -> np.ndarray:
+    """Simulates realistic room acoustics: reverberation, desk rumble, and background noise."""
+    out = sig.copy()
+    if add_reverb:
+        delays = [int(fs * 0.022), int(fs * 0.039), int(fs * 0.055)]
+        for d, g in zip(delays, [0.32, 0.20, 0.12]):
+            if d < len(sig):
+                out[d:] += sig[:-d] * g
+    t = np.linspace(0, len(sig)/fs, len(sig), endpoint=False)
+    rumble = 0.010 * np.sin(2 * np.pi * 50 * t) + 0.006 * np.sin(2 * np.pi * 100 * t)
+    noise = np.random.normal(0, noise_level, len(sig))
+    combined = out + rumble + noise
+    return (combined / (np.max(np.abs(combined)) + 1e-6)).astype(np.float32)
+
 @app.post("/api/analyze-preset")
 async def analyze_preset(req: AnalyzePresetRequest):
     """
-    Generates and benchmarks a realistic Human Voice or AI Voice Clone sample.
+    Generates and benchmarks realistic Human Voice or AI Voice Clone samples,
+    including real-world acoustic room conditions (background noise & reverberation).
     """
     start_t = time.perf_counter()
     fs = 16000
     if req.preset == "human":
         audio = generate_human_voice_sample(duration_sec=2.5, sample_rate=fs)
-    else:
+    elif req.preset == "human_noisy":
+        raw = generate_human_voice_sample(duration_sec=2.5, sample_rate=fs)
+        audio = add_room_acoustics(raw, fs=fs, noise_level=0.035, add_reverb=True)
+    elif req.preset == "ai_noisy":
+        raw = generate_synthetic_voice_sample(duration_sec=2.5, sample_rate=fs)
+        audio = add_room_acoustics(raw, fs=fs, noise_level=0.035, add_reverb=True)
+    else:  # "ai_clone"
         audio = generate_synthetic_voice_sample(duration_sec=2.5, sample_rate=fs)
         
     result = detector.analyze_full_recording(audio, sample_rate=fs)

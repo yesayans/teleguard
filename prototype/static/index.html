@@ -394,18 +394,34 @@
             <!-- Benchmarks / Presets -->
             <button class="btn-secondary" onclick="runPreset('ai_clone')">
                 <div style="display: flex; justify-content: space-between; align-items: center;">
-                    <strong style="color: #f87171;">🤖 Test AI Voice Clone Sample</strong>
+                    <strong style="color: #f87171;">🤖 AI Voice Clone (Clean)</strong>
                     <span style="font-size: 10px; color: #ef4444; background: rgba(239,68,68,0.1); padding: 2px 6px; border-radius: 4px;">ELEVENLABS / XTTS</span>
                 </div>
                 <span style="font-size: 11px; color: var(--text-sub);">Hyper-smooth pitch contour from neural vocoder synthesis</span>
             </button>
 
+            <button class="btn-secondary" onclick="runPreset('ai_noisy')">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <strong style="color: #f87171;">🔊 AI Voice in Room (Noise + Echo)</strong>
+                    <span style="font-size: 10px; color: #f59e0b; background: rgba(245,158,11,0.1); padding: 2px 6px; border-radius: 4px;">SPEAKER PLAYBACK</span>
+                </div>
+                <span style="font-size: 11px; color: var(--text-sub);">AI clone re-recorded with room reflections &amp; ambient background noise</span>
+            </button>
+
             <button class="btn-secondary" onclick="runPreset('human')">
                 <div style="display: flex; justify-content: space-between; align-items: center;">
-                    <strong style="color: #34d399;">👤 Test Real Human Voice Sample</strong>
+                    <strong style="color: #34d399;">👤 Real Human Voice (Clean)</strong>
                     <span style="font-size: 10px; color: #10b981; background: rgba(16,185,129,0.1); padding: 2px 6px; border-radius: 4px;">AUTHENTIC HUMAN</span>
                 </div>
-                <span style="font-size: 11px; color: var(--text-sub);">Living vocal fold speech with natural biological micro-jitter</span>
+                <span style="font-size: 11px; color: var(--text-sub);">Living vocal fold speech with natural biological micro-jitter &amp; airflow</span>
+            </button>
+
+            <button class="btn-secondary" onclick="runPreset('human_noisy')">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <strong style="color: #34d399;">🎙️ Real Human Voice (Room Noise)</strong>
+                    <span style="font-size: 10px; color: #10b981; background: rgba(16,185,129,0.1); padding: 2px 6px; border-radius: 4px;">OFFICE ACOUSTICS</span>
+                </div>
+                <span style="font-size: 11px; color: var(--text-sub);">Human speech with ambient noise, fan hum, and room acoustics</span>
             </button>
 
             <!-- File Upload -->
@@ -417,7 +433,7 @@
             </div>
 
             <div style="margin-top: auto; font-size: 11px; color: var(--text-sub); line-height: 1.5; border-top: 1px solid var(--border); padding-top: 10px;">
-                <strong>Evaluation Rule:</strong> Living human vocal cords physically cannot vibrate with zero perturbation (<strong style="color: #fff;">Jitter: 0.6%–3.5%</strong>). AI neural vocoders produce hyper-smooth mathematical pitch (<strong style="color: var(--red);">&lt; 0.25%</strong>), exposing synthetic origins.
+                <strong>Acoustic Invariants:</strong> Living human vocal folds physically fluctuate (<strong style="color: #fff;">RAP Jitter ≥ 0.040%</strong>) and leak turbulent glottal airflow into inter-harmonic valleys (<strong style="color: #fff;">HPP ≤ 42.0</strong>). Neural vocoders generate mathematical splines (<strong style="color: var(--red);">RAP &lt; 0.020%</strong>) with sharp Dirac combs (<strong style="color: var(--red);">HPP &gt; 70.0</strong>), exposing AI origins even through phone speakers and ambient noise.
             </div>
         </section>
 
@@ -437,7 +453,7 @@
                     PRESS START RECORDING
                 </div>
                 <div class="verdict-sub" id="verdict-sub">
-                    Speak for 2–5 seconds, then press Stop. TeleGuard AI will evaluate biomechanical vocal fold stability and dissertation LPC prediction residual.
+                    Speak for 2–5 seconds, then press Stop. TeleGuard AI evaluates biomechanical vocal fold micro-jitter, harmonic spectral contrast (HPP), and dissertation LPC excitation residual.
                 </div>
             </div>
 
@@ -460,14 +476,18 @@
             </div>
 
             <!-- Telemetry Metrics Grid -->
-            <div class="metric-grid">
+            <div class="metric-grid" style="grid-template-columns: repeat(4, 1fr);">
                 <div class="metric-card">
                     <div class="metric-val" id="metric-jitter">-- %</div>
-                    <div class="metric-lbl">Micro-Jitter (F0)</div>
+                    <div class="metric-lbl">Micro-Jitter (RAP)</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-val" id="metric-hpp">--</div>
+                    <div class="metric-lbl">Harmonic Contrast (HPP)</div>
                 </div>
                 <div class="metric-card">
                     <div class="metric-val" id="metric-shimmer">-- %</div>
-                    <div class="metric-lbl">Amplitude Shimmer</div>
+                    <div class="metric-lbl">Glottal Shimmer (APQ3)</div>
                 </div>
                 <div class="metric-card">
                     <div class="metric-val" id="metric-zscore">--</div>
@@ -811,6 +831,14 @@
                     const jitEl = document.getElementById('metric-jitter');
                     jitEl.textContent = `${jitterVal.toFixed(3)}%`;
                     jitEl.style.color = jitterVal < 0.025 ? '#ef4444' : '#10b981';
+                }
+                const hppVal = b.harmonic_peak_prominence;
+                if (hppVal !== undefined) {
+                    const hppEl = document.getElementById('metric-hpp');
+                    if (hppEl) {
+                        hppEl.textContent = `${hppVal.toFixed(1)}`;
+                        hppEl.style.color = hppVal > 48.0 ? '#ef4444' : '#10b981';
+                    }
                 }
                 const shimmerVal = b.amplitude_shimmer_apq3_pct !== undefined ? b.amplitude_shimmer_apq3_pct : b.amplitude_shimmer_pct;
                 if (shimmerVal !== undefined) {
