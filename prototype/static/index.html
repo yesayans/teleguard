@@ -342,25 +342,123 @@
             height: 36px;
             outline: none;
         }
+
+        .header-brand {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+        }
+
+        .header-status {
+            font-size: 12px;
+            color: var(--text-sub);
+            display: flex;
+            gap: 14px;
+            align-items: center;
+        }
+
+        /* Mobile and Responsive Media Queries */
+        @media (max-width: 1024px) {
+            main {
+                grid-template-columns: 1fr;
+                gap: 14px;
+            }
+        }
+
+        @media (max-width: 768px) {
+            body {
+                padding: 12px;
+                gap: 12px;
+            }
+
+            header {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 10px;
+                padding: 12px 16px;
+            }
+
+            .header-status {
+                flex-wrap: wrap;
+                gap: 8px 14px;
+                font-size: 11px;
+            }
+        }
+
+        @media (max-width: 600px) {
+            body {
+                padding: 8px;
+                gap: 10px;
+            }
+
+            .card {
+                padding: 14px;
+                gap: 12px;
+            }
+
+            .header-brand {
+                flex-wrap: wrap;
+                gap: 8px;
+            }
+
+            .verdict-banner {
+                padding: 16px 12px;
+            }
+
+            .verdict-text {
+                font-size: 19px;
+            }
+
+            .verdict-sub {
+                font-size: 11px;
+                max-width: 100%;
+            }
+
+            .metric-grid {
+                grid-template-columns: repeat(2, 1fr) !important;
+                gap: 6px;
+            }
+
+            .metric-card {
+                padding: 8px 10px;
+            }
+
+            .metric-val {
+                font-size: 15px;
+            }
+
+            .metric-lbl {
+                font-size: 9px;
+            }
+
+            .btn-record-start, .btn-record-stop {
+                padding: 14px 16px;
+                font-size: 13px;
+            }
+
+            .btn-secondary {
+                padding: 10px 12px;
+            }
+        }
+
+        @media (max-width: 360px) {
+            .metric-grid {
+                grid-template-columns: 1fr !important;
+            }
+        }
     </style>
 </head>
 <body>
 
     <header>
-        <div style="display: flex; align-items: center; gap: 14px;">
+        <div class="header-brand">
             <h1 style="font-size: 19px; font-weight: 800; letter-spacing: -0.5px;">TeleGuard AI</h1>
             <span class="badge">Forensic Deepfake Voice Detector</span>
         </div>
-        <div style="display: flex; align-items: center; gap: 16px;">
-            <div style="font-size: 12px; color: var(--text-sub); display: flex; gap: 14px;">
-                <span>Core: <strong style="color: var(--green);">ONLINE</strong></span>
-                <span>Latency: <strong style="color: var(--cyan);">&lt; 30 ms</strong></span>
-                <span>Privacy: <strong style="color: var(--green);">GDPR (0 Bytes Disk)</strong></span>
-            </div>
-            <a href="/diagram" style="background: linear-gradient(135deg, rgba(0, 242, 254, 0.15), rgba(56, 189, 248, 0.25)); border: 1px solid rgba(0, 242, 254, 0.5); color: var(--cyan); padding: 6px 14px; border-radius: 8px; font-size: 11px; font-weight: 700; text-decoration: none; display: flex; align-items: center; gap: 6px; box-shadow: 0 0 12px rgba(0, 242, 254, 0.2);">
-                <span>🎬 Architecture Animation (Pitch Deck)</span>
-                <span>→</span>
-            </a>
+        <div class="header-status">
+            <span>Core: <strong style="color: var(--green);">ONLINE</strong></span>
+            <span>Latency: <strong style="color: var(--cyan);">&lt; 30 ms</strong></span>
+            <span>Privacy: <strong style="color: var(--green);">GDPR (0 Bytes Disk)</strong></span>
         </div>
     </header>
 
@@ -497,7 +595,7 @@
             </div>
 
             <!-- Telemetry Metrics Grid -->
-            <div class="metric-grid" style="grid-template-columns: repeat(3, 1fr); gap: 8px;">
+            <div class="metric-grid">
                 <div class="metric-card">
                     <div class="metric-val" id="metric-tremor">-- %</div>
                     <div class="metric-lbl">Neuromuscular Tremor (8-12Hz)</div>
@@ -595,8 +693,14 @@
 
         const canvas = document.getElementById('waveform-canvas');
         const ctx = canvas.getContext('2d');
-        canvas.width = canvas.parentElement.clientWidth || 500;
-        canvas.height = 90;
+        function resizeCanvas() {
+            if (canvas && canvas.parentElement) {
+                canvas.width = canvas.parentElement.clientWidth || 300;
+                canvas.height = 90;
+            }
+        }
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
 
         function playWarningChime() {
             if (chimePlayed) return;
@@ -618,6 +722,10 @@
         }
 
         function drawWaveform(buffer) {
+            if (canvas && canvas.parentElement && canvas.width !== canvas.parentElement.clientWidth) {
+                canvas.width = canvas.parentElement.clientWidth || 300;
+                canvas.height = 90;
+            }
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             ctx.lineWidth = 2;
             ctx.strokeStyle = '#00f2fe';

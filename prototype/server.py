@@ -95,12 +95,6 @@ async def serve_index():
     index_path = os.path.join(os.path.dirname(__file__), "static", "index.html")
     return FileResponse(index_path)
 
-@app.get("/diagram", response_class=HTMLResponse)
-@app.get("/architecture", response_class=HTMLResponse)
-async def serve_architecture_diagram():
-    diagram_path = os.path.join(os.path.dirname(__file__), "static", "architecture.html")
-    return FileResponse(diagram_path)
-
 @app.post("/api/analyze-recording")
 async def analyze_recording(req: AnalyzeRecordingRequest):
     """
