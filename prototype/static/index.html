@@ -387,6 +387,11 @@
                 ⏹️ Stop Recording &amp; Analyze
             </button>
 
+            <div style="background: rgba(0, 242, 254, 0.08); border: 1px solid rgba(0, 242, 254, 0.2); border-radius: 6px; padding: 6px 10px; font-size: 10px; color: var(--cyan); display: flex; align-items: center; gap: 6px;">
+                <span>⚡</span>
+                <span><strong>Auto-Preamp Active:</strong> Quiet voices &amp; low-gain mics are boosted up to 40x dynamically.</span>
+            </div>
+
             <div style="font-size: 11px; color: var(--text-sub); text-align: center; margin: 4px 0;">
                 — OR RUN INSTANT FORENSIC BENCHMARKS —
             </div>
@@ -473,6 +478,22 @@
                     <span id="speech-duration-label">Voiced Speech: --</span>
                 </div>
                 <canvas id="waveform-canvas"></canvas>
+            </div>
+
+            <!-- Live Mic Volume Indicator -->
+            <div style="background: rgba(0,0,0,0.3); border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; display: flex; flex-direction: column; gap: 4px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; font-size: 11px;">
+                    <span style="color: var(--text-sub);">Microphone Sensitivity / Volume:</span>
+                    <span id="mic-level-badge" style="font-weight: 700; color: #10b981; font-size: 11px;">READY (AUTO-BOOST ACTIVE)</span>
+                </div>
+                <div style="height: 6px; background: rgba(255,255,255,0.08); border-radius: 3px; overflow: hidden; position: relative;">
+                    <div id="mic-level-bar" style="height: 100%; width: 0%; background: linear-gradient(90deg, #10b981, #00f2fe); transition: width 0.08s ease;"></div>
+                </div>
+                <div style="display: flex; justify-content: space-between; font-size: 10px; color: #64748b;">
+                    <span>Quiet / Soft Voice (-50dB)</span>
+                    <span id="mic-db-label">-- dBFS</span>
+                    <span>Optimal Speech (-12dB)</span>
+                </div>
             </div>
 
             <!-- Telemetry Metrics Grid -->
@@ -612,15 +633,47 @@
             ctx.stroke();
         }
 
+        function updateLiveVuMeter(rms) {
+            const bar = document.getElementById('mic-level-bar');
+            const badge = document.getElementById('mic-level-badge');
+            const dbLabel = document.getElementById('mic-db-label');
+            if (!bar) return;
+
+            const db = 20 * Math.log10(Math.max(rms, 1e-5));
+            // Map -50dB..0dB to 0%..100%
+            const pct = Math.max(0, Math.min(100, (db + 50) * 2));
+            bar.style.width = `${pct}%`;
+            if (dbLabel) dbLabel.textContent = `${db.toFixed(0)} dBFS`;
+
+            if (pct < 12) {
+                bar.style.background = '#64748b';
+                if (badge) {
+                    badge.textContent = 'SILENCE / AMBIENT';
+                    badge.style.color = '#94a3b8';
+                }
+            } else if (pct < 32) {
+                bar.style.background = '#f59e0b';
+                if (badge) {
+                    badge.textContent = 'SOFT VOICE (AUTO-BOOST 25x ACTIVE)';
+                    badge.style.color = '#f59e0b';
+                }
+            } else {
+                bar.style.background = 'linear-gradient(90deg, #10b981, #00f2fe)';
+                if (badge) {
+                    badge.textContent = 'STRONG VOICE (OPTIMAL LEVEL)';
+                    badge.style.color = '#10b981';
+                }
+            }
+        }
+
         async function startRecording() {
             try {
-                // Request raw pristine audio: disable browser echo cancellation & noise suppression
-                // which otherwise artificially smooths glottal micro-variations
+                // Request pristine audio with Auto-Gain-Control enabled for quiet voices / low-sensitivity mics
                 micStream = await navigator.mediaDevices.getUserMedia({
                     audio: {
                         echoCancellation: false,
                         noiseSuppression: false,
-                        autoGainControl: false,
+                        autoGainControl: true, // Native browser AGC dynamically amplifies soft voices
                         channelCount: 1
                     }
                 });
@@ -649,13 +702,21 @@
                     document.getElementById('rec-timer').textContent = `${mins}:${secs}`;
                 }, 1000);
 
-                // Buffer capture
+                // Buffer capture with live VU metering
                 scriptNode = audioCtx.createScriptProcessor(4096, 1, 1);
                 scriptNode.onaudioprocess = (e) => {
                     if (!isRecording) return;
                     const channelData = e.inputBuffer.getChannelData(0);
                     pcmAccumulator.push(...channelData);
                     drawWaveform(channelData);
+
+                    // Compute live RMS for VU meter
+                    let sumSq = 0;
+                    for (let i = 0; i < channelData.length; i++) {
+                        sumSq += channelData[i] * channelData[i];
+                    }
+                    const rms = Math.sqrt(sumSq / channelData.length);
+                    updateLiveVuMeter(rms);
                 };
 
                 source.connect(scriptNode);
@@ -691,6 +752,23 @@
                 audioCtx.close();
                 audioCtx = null;
             }
+
+            // Client-Side Dynamic Pre-Amp: If voice is soft or microphone gain is low, cleanly boost to studio broadcast level
+            let peakVal = 0;
+            for (let i = 0; i < pcmAccumulator.length; i++) {
+                const a = Math.abs(pcmAccumulator[i]);
+                if (a > peakVal) peakVal = a;
+            }
+            if (peakVal > 0.0005 && peakVal < 0.40) {
+                const boostFactor = Math.min(0.85 / peakVal, 35.0);
+                for (let i = 0; i < pcmAccumulator.length; i++) {
+                    pcmAccumulator[i] = Math.max(-1.0, Math.min(1.0, pcmAccumulator[i] * boostFactor));
+                }
+                console.log(`[TeleGuard AI] Quiet voice pre-amp applied: peak ${peakVal.toFixed(4)} boosted ${boostFactor.toFixed(1)}x.`);
+            }
+
+            // Reset VU meter
+            updateLiveVuMeter(0);
 
             // Show analyzing state on verdict banner
             const banner = document.getElementById('verdict-banner');

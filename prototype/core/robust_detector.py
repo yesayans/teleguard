@@ -122,7 +122,7 @@ class RealtimeVoiceDetector:
         if len(audio) == 0:
             return False
         rms = np.sqrt(np.mean(audio**2))
-        return rms > 0.012
+        return rms > 0.0025  # Sensitive threshold for soft/quiet conversational speech
 
     def _compute_pitch_and_jitter(self, audio: np.ndarray, fs: int) -> dict:
         """
@@ -306,7 +306,8 @@ class RealtimeVoiceDetector:
         audio = audio - np.mean(audio)
         peak = float(np.max(np.abs(audio)))
         
-        if peak < 0.008 or total_sec < 0.35:
+        # Sensitive silence threshold (0.002) so quiet speech is never dropped as silence
+        if peak < 0.002 or total_sec < 0.35:
             return {
                 "status": "silence",
                 "is_ai_generated": False,
@@ -342,17 +343,25 @@ class RealtimeVoiceDetector:
 
         # Preprocessing: 4th-Order Butterworth Bandpass (80 Hz - 3800 Hz)
         filtered_audio = bandpass_filter(audio, fs=fs, lowcut=80.0, highcut=3800.0)
-        norm_peak = float(np.max(np.abs(filtered_audio)))
-        norm_audio = filtered_audio / (norm_peak + 1e-6)
+
+        # Digital Speech-Adaptive AGC: cleanly boosts quiet/soft conversational speech up to 40x
+        p95 = float(np.percentile(np.abs(filtered_audio), 95))
+        if p95 > 1e-4:
+            gain = min(0.65 / p95, 40.0)
+            norm_audio = np.clip(filtered_audio * gain, -1.0, 1.0)
+        else:
+            norm_peak = float(np.max(np.abs(filtered_audio)))
+            norm_audio = filtered_audio / (norm_peak + 1e-6)
 
         # 1. Praat Acoustic Phonetics Analysis (Gold Standard)
         if HAVE_PRAAT:
             sound = parselmouth.Sound(norm_audio, sampling_frequency=fs)
-            pitch = sound.to_pitch(pitch_floor=65, pitch_ceiling=450)
-            point_process = call(sound, "To PointProcess (periodic, cc)", 65, 450)
+            # Use sensitive silence (0.01) and voicing (0.25) thresholds for quiet/conversational speech
+            pitch = sound.to_pitch_cc(pitch_floor=65, pitch_ceiling=450, silence_threshold=0.01, voicing_threshold=0.25)
+            point_process = call([sound, pitch], "To PointProcess (cc)")
 
             n_points = call(point_process, "Get number of points")
-            if n_points < 8:
+            if n_points < 4:
                 return {
                     "status": "insufficient_speech",
                     "is_ai_generated": False,
