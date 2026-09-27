@@ -117,6 +117,17 @@ async def analyze_recording(req: AnalyzeRecordingRequest):
     # Run full recording forensic analysis
     result = detector.analyze_full_recording(audio_16k, sample_rate=16000)
     elapsed_ms = (time.perf_counter() - start_t) * 1000.0
+
+    # Save last recording for forensic audit
+    try:
+        debug_path = os.path.join(os.path.dirname(__file__), "last_recording.wav")
+        if HAVE_SOUNDFILE:
+            sf.write(debug_path, audio_16k, 16000)
+    except Exception:
+        pass
+
+    bio = result.get("biometrics", {})
+    print(f"[TeleGuard AI] Recording analyzed: dur={len(audio_16k)/16000:.2f}s | verdict={result.get('verdict')} | prob={result.get('synthetic_probability')} | tremor={bio.get('laryngeal_tremor_pct')}% | comb={bio.get('high_freq_comb_periodicity')} | rap={bio.get('pitch_jitter_rap_pct')}% | latency={elapsed_ms:.1f}ms")
     
     # Generate WAV data URL for immediate audio playback in UI
     audio_url = pcm_to_wav_base64(audio_16k, sample_rate=16000)

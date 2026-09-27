@@ -420,7 +420,7 @@ class RealtimeVoiceDetector:
                         "pitch_jitter_rap_pct": 0.0,
                         "amplitude_shimmer_pct": 0.0,
                         "amplitude_shimmer_apq3_pct": 0.0,
-                        "high_freq_comb_peakiness": 0.0,
+                        "high_freq_comb_periodicity": 0.0,
                         "harmonicity_hnr_db": 0.0,
                         "harmonic_peak_prominence": 0.0,
                         "dissertation_z_score": 0.0,
@@ -455,18 +455,29 @@ class RealtimeVoiceDetector:
             voiced_sec = float(n_points * 0.008)
 
             # 2. Involuntary Laryngeal Neuromuscular Micro-Tremor (6 - 18 Hz Bandpass)
-            # Biological Invariant: Living human laryngeal motor units fire with involuntary 8-12 Hz micro-tremor.
-            # Neural vocoders generate smooth mathematical splines without neuromuscular tremor.
+            # Evaluated strictly on contiguous voiced segments (>= 75ms) to prevent word pauses and syllable
+            # transitions from introducing artificial step discontinuities or filter ringing.
             f0_vals = pitch.selected_array['frequency']
-            voiced_f0 = f0_vals[f0_vals > 0]
-            if len(voiced_f0) >= 20:
-                fs_pitch = 200.0 # time_step 0.005s -> 200 Hz sampling rate
-                nyq_p = 0.5 * fs_pitch
-                b_t, a_t = scipy.signal.butter(3, [6.0 / nyq_p, 18.0 / nyq_p], btype='band')
-                trem_sig = scipy.signal.filtfilt(b_t, a_t, voiced_f0)
-                tremor_pct = float(np.sqrt(np.mean(trem_sig**2)) / (np.mean(voiced_f0) + 1e-6) * 100.0)
+            is_voiced = (f0_vals > 0).astype(int)
+            d_v = np.diff(np.pad(is_voiced, (1, 1), 'constant'))
+            starts = np.where(d_v == 1)[0]
+            ends = np.where(d_v == -1)[0]
+            fs_pitch = 200.0 # time_step 0.005s -> 200 Hz sampling rate
+            nyq_p = 0.5 * fs_pitch
+            b_t, a_t = scipy.signal.butter(3, [6.0 / nyq_p, 18.0 / nyq_p], btype='band')
+            
+            segment_tremors = []
+            for s_idx, e_idx in zip(starts, ends):
+                seg = f0_vals[s_idx:e_idx]
+                if len(seg) >= 15: # At least 75ms continuous phonation
+                    trem_sig = scipy.signal.filtfilt(b_t, a_t, seg)
+                    seg_trem = float(np.sqrt(np.mean(trem_sig**2)) / (np.mean(seg) + 1e-6) * 100.0)
+                    segment_tremors.append(seg_trem)
+                    
+            if len(segment_tremors) > 0:
+                tremor_pct = float(np.median(segment_tremors))
             else:
-                tremor_pct = 0.15
+                tremor_pct = 0.05
         else:
             pros = self._compute_pitch_and_jitter(norm_audio, fs)
             j_rap_pct = pros["jitter"] * 100.0 * 0.35
