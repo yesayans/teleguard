@@ -1,0 +1,12 @@
+teleguard.yesayan.net {
+    reverse_proxy teleguard:8000
+
+    # Compression
+    encode gzip zstd
+
+    # Logging
+    log {
+        output stdout
+        format console
+    }
+}

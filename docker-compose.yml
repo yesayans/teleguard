@@ -1,0 +1,37 @@
+version: '3.8'
+
+services:
+  teleguard:
+    build: .
+    container_name: teleguard_app
+    restart: unless-stopped
+    expose:
+      - "8000"
+    environment:
+      - PYTHONUNBUFFERED=1
+    networks:
+      - teleguard_net
+
+  caddy:
+    image: caddy:alpine
+    container_name: teleguard_caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - teleguard
+    networks:
+      - teleguard_net
+
+networks:
+  teleguard_net:
+    driver: bridge
+
+volumes:
+  caddy_data:
+  caddy_config:
