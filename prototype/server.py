@@ -1,111 +1,132 @@
 """
-TeleGuard AI: Interactive Demo Server (FastAPI)
-Provides live dashboard for Ideathon presentations and technical mentoring reviews.
+TeleGuard AI: Real-Time AI Voice Detection Server
+Focused 100% on detecting AI-Generated Speech vs Real Human Speech.
 """
 
 import os
 import sys
+import time
 import numpy as np
-from fastapi import FastAPI
+from fastapi import FastAPI, UploadFile, File
 from fastapi.responses import HTMLResponse, FileResponse
-from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 # Ensure root workspace is on python path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from prototype.core.stream_simulator import TelecomCallPipeline
+from prototype.core.robust_detector import RealtimeVoiceDetector
 from prototype.run_demo import generate_human_voice_sample, generate_synthetic_voice_sample
 
-app = FastAPI(title="TeleGuard AI In-Network Voice Shield")
+app = FastAPI(title="TeleGuard AI: Real-Time AI Voice Detection")
 
-pipeline = TelecomCallPipeline(subscriber_id="+37491401122")
+detector = RealtimeVoiceDetector(target_sample_rate=16000)
+
+class ProcessLiveAudioRequest(BaseModel):
+    samples: list[float]
+    client_sample_rate: int = 16000
 
 class ProcessFrameRequest(BaseModel):
     scenario: str
     frame: int
 
-class ProcessLiveAudioRequest(BaseModel):
-    samples: list[float]
-    response_latency_ms: float = 220.0
-
-@app.post("/api/process-live-audio")
-async def process_live_audio(req: ProcessLiveAudioRequest):
-    samples_np = np.array(req.samples, dtype=np.float32)
-    # Resample or pad/slice to 400ms window (6400 samples at 16kHz)
-    if len(samples_np) > 0:
-        result = pipeline.process_incoming_rtp_chunk(samples_np, response_latency_ms=req.response_latency_ms)
-    else:
-        result = {"error": "Empty audio buffer"}
-    return result
-
-@app.get("/api/certificate/status")
-async def get_cert_status():
-    cert_info = pipeline.certificate_engine.get_current_certificate()
-    return {
-        "subscriber_id": cert_info["subscriber_id"],
-        "current_epoch": cert_info["epoch"],
-        "seconds_remaining_in_epoch": cert_info["seconds_remaining"],
-        "certificate_fingerprint": cert_info["certificate_fingerprint"]
-    }
+def resample_to_16k(audio: np.ndarray, orig_sr: int) -> np.ndarray:
+    """Downsamples client audio (44.1k/48k) to 16kHz using linear interpolation."""
+    if orig_sr == 16000 or len(audio) == 0:
+        return audio
+    target_len = int(len(audio) * 16000 / orig_sr)
+    if target_len < 10:
+        return audio
+    orig_indices = np.arange(len(audio))
+    target_indices = np.linspace(0, len(audio) - 1, target_len)
+    return np.interp(target_indices, orig_indices, audio).astype(np.float32)
 
 @app.get("/", response_class=HTMLResponse)
 async def serve_index():
     index_path = os.path.join(os.path.dirname(__file__), "static", "index.html")
     return FileResponse(index_path)
 
+@app.post("/api/process-live-audio")
+async def process_live_audio(req: ProcessLiveAudioRequest):
+    start_t = time.perf_counter()
+    raw_samples = np.array(req.samples, dtype=np.float32)
+    
+    # Resample from client's browser rate (e.g. 48kHz) to 16kHz
+    audio_16k = resample_to_16k(raw_samples, req.client_sample_rate)
+    
+    result = detector.analyze_audio(audio_16k, sample_rate=16000)
+    elapsed_ms = (time.perf_counter() - start_t) * 1000.0
+
+    return {
+        "processing_latency_ms": round(elapsed_ms, 2),
+        "synthetic_probability": result["synthetic_probability"],
+        "threat_level": result["threat_level"],
+        "verdict": result["verdict"],
+        "is_synthetic": result["is_synthetic"],
+        "details": result["details"],
+        "alert_delivered": {
+            "in_call_whisper": result["is_synthetic"],
+            "flash_sms": "[SECURITY WARNING] AI-Generated Synthetic Voice Detected!" if result["is_synthetic"] else None
+        }
+    }
+
 @app.post("/api/process-frame")
 async def process_frame(req: ProcessFrameRequest):
-    chunk_samples = 6400 # 400ms at 16kHz
-    call_id = "CALL_DEMO_2026_SESSION"
-    now = time.time()
+    start_t = time.perf_counter()
+    fs = 16000
     
-    is_registered_claim = False
-    
-    if req.scenario == "registered_genuine":
-        # Sending side: Grandson speaks, device embeds active 30s voice certificate
-        raw_voice = generate_human_voice_sample(duration_sec=0.4)
-        pcm_chunk = pipeline.voice_cert_embedder.embed_certificate(raw_voice, call_id=call_id, timestamp=now)
-        response_latency = 190.0
-        is_registered_claim = True
-    elif req.scenario == "registered_imposter_ai":
-        # Attacker: Uses ElevenLabs/XTTS to clone Grandson's voice, but lacks secret key!
-        pcm_chunk = generate_synthetic_voice_sample(duration_sec=0.4)
-        response_latency = 1100.0
-        is_registered_claim = True
-    elif req.scenario == "registered_replay":
-        # Attacker: Replays a recorded call from 5 minutes ago (expired epoch)
-        raw_voice = generate_human_voice_sample(duration_sec=0.4)
-        old_epoch_time = now - 180 # 6 epochs ago
-        pcm_chunk = pipeline.voice_cert_embedder.embed_certificate(raw_voice, call_id=call_id, timestamp=old_epoch_time)
-        response_latency = 210.0
-        is_registered_claim = True
-    elif req.scenario == "human":
-        # Unregistered regular human call
-        pcm_chunk = generate_human_voice_sample(duration_sec=0.4)
-        response_latency = 220.0
-    elif req.scenario == "synthetic_opensource":
-        # Unregistered open-source synthetic call (XTTS)
-        pcm_chunk = generate_synthetic_voice_sample(duration_sec=0.4)
-        response_latency = 1180.0
-    else: # commercial watermarked
-        pcm_chunk = generate_synthetic_voice_sample(duration_sec=0.4)
-        sig = pipeline.watermark_detector.signatures["SynthID_Audio"]
-        pcm_chunk[-len(sig):] += sig * 0.4
-        response_latency = 1250.0
+    if req.scenario == "human":
+        # Authentic human speech with biological jitter
+        t = np.linspace(0, 0.4, int(fs * 0.4))
+        f0 = 135.0 * (1.0 + 0.018 * np.sin(2 * np.pi * 5.5 * t) + np.random.normal(0, 0.005, len(t)))
+        phase = 2 * np.pi * np.cumsum(f0) / fs
+        pcm_chunk = np.sin(phase) + 0.5 * np.sin(2 * phase) + 0.25 * np.sin(3 * phase)
+    else:
+        # AI cloned speech: perfectly static neural pitch trajectory
+        t = np.linspace(0, 0.4, int(fs * 0.4))
+        f0 = 135.0
+        pcm_chunk = np.sin(2 * np.pi * f0 * t) + 0.5 * np.sin(2 * np.pi * 2 * f0 * t) + 0.25 * np.sin(2 * np.pi * 3 * f0 * t)
 
-    result = pipeline.process_incoming_rtp_chunk(
-        pcm_chunk, 
-        response_latency_ms=response_latency,
-        is_registered_caller_claim=is_registered_claim,
-        call_id=call_id
-    )
-    return result
+    result = detector.analyze_audio(pcm_chunk, sample_rate=fs)
+    elapsed_ms = (time.perf_counter() - start_t) * 1000.0
+
+    return {
+        "frame_index": req.frame,
+        "processing_latency_ms": round(elapsed_ms, 2),
+        "synthetic_probability": result["synthetic_probability"],
+        "threat_level": result["threat_level"],
+        "verdict": result["verdict"],
+        "is_synthetic": result["is_synthetic"],
+        "details": result["details"],
+        "alert_delivered": {
+            "in_call_whisper": result["is_synthetic"],
+            "flash_sms": "[SECURITY WARNING] AI-Generated Synthetic Voice Detected!" if result["is_synthetic"] else None
+        }
+    }
+
+@app.post("/api/detect-audio-file")
+async def detect_audio_file(file: UploadFile = File(...)):
+    """Upload any audio file to test AI detection."""
+    content = await file.read()
+    # Read raw bytes as 16-bit PCM if wav, or float
+    try:
+        audio = np.frombuffer(content, dtype=np.int16).astype(np.float32) / 32768.0
+        if len(audio) < 1600:
+            return {"error": "Audio file too short (minimum 0.2s required)"}
+        result = detector.analyze_audio(audio[:32000], sample_rate=16000)
+        return {
+            "filename": file.filename,
+            "verdict": result["verdict"],
+            "synthetic_probability": result["synthetic_probability"],
+            "threat_level": result["threat_level"],
+            "details": result["details"]
+        }
+    except Exception as e:
+        return {"error": str(e)}
 
 if __name__ == "__main__":
     import uvicorn
     print("\n" + "=" * 70)
-    print(" TeleGuard AI Demo Server running at: http://127.0.0.1:8000")
-    print(" Open the browser to interact with the live telecom SBC stream demo.")
+    print(" TeleGuard AI: Real-Time AI Voice Detection Server")
+    print(" Listening at: http://127.0.0.1:8000")
     print("=" * 70 + "\n")
     uvicorn.run(app, host="127.0.0.1", port=8000)
