@@ -300,6 +300,6 @@ if __name__ == "__main__":
     import uvicorn
     print("\n" + "=" * 70)
     print(" TeleGuard AI: Real-Time AI Voice Detection Server")
-    print(" Listening at: http://127.0.0.1:8000")
+    print(" Listening at: http://127.0.0.1:8000 (and LAN http://0.0.0.0:8000)")
     print("=" * 70 + "\n")
-    uvicorn.run(app, host="127.0.0.1", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=8000)
