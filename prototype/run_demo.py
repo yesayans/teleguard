@@ -17,58 +17,46 @@ from prototype.core.stream_simulator import TelecomCallPipeline
 def generate_synthetic_voice_sample(duration_sec: float = 2.0, sample_rate: int = 16000) -> np.ndarray:
     """
     Simulates speech synthesized by neural vocoders (XTTS / StyleTTS2 / VITS):
-    - Upsampling transposed convolution grid artifacts (periodic phase shifts)
-    - Perfectly repeating glottal excitation pulses (low residual entropy)
-    - Mechanical harmonic decay slope
+    - Rigid pitch trajectory with zero biological jitter (var_d < 0.0005)
+    - Deterministic excitation pulses produced by neural upsampling
     """
     t = np.linspace(0, duration_sec, int(sample_rate * duration_sec), endpoint=False)
-    f0 = 135.0 # Fixed pitch without human tremor
+    f0 = 130.0 # Rigid static pitch from prosody model
     signal = np.zeros_like(t)
     
-    # Overly regular harmonics (linear vocoder generation)
-    for h in range(1, 18):
-        # Neural vocoders introduce fixed phase-coupling across harmonics
-        phase_h = (h * 1.57) % (2 * np.pi)
-        signal += (1.0 / (h ** 0.85)) * np.sin(2 * np.pi * (h * f0) * t + phase_h)
+    # Overly regular harmonics without natural phase coupling
+    for h in range(1, 16):
+        signal += (1.0 / (h ** 0.9)) * np.sin(2 * np.pi * (h * f0) * t)
         
-    # Vocoder transposed convolution upsampling artifact (grid noise at 4kHz)
-    grid_rate = 4000.0
-    upsampling_artifact = 0.22 * np.sin(2 * np.pi * grid_rate * t) * (1.0 + np.sin(2 * np.pi * 400 * t))
-    signal += upsampling_artifact
-    
-    # Low-entropy glottal impulses
-    pulse_period = int(sample_rate / f0)
-    for p in range(0, len(signal), pulse_period):
-        if p + 4 < len(signal):
-            signal[p:p+4] += 0.8 # Rigid mechanical glottal spikes
-            
+    # High-frequency vocoder grid artifact (4kHz)
+    signal += 0.25 * np.sin(2 * np.pi * 4000 * t)
     signal = signal / (np.max(np.abs(signal)) + 1e-6)
     return signal.astype(np.float32)
 
 def generate_human_voice_sample(duration_sec: float = 2.0, sample_rate: int = 16000) -> np.ndarray:
     """
-    Simulates natural human speech:
-    - Glottal micro-jitter and shimmer (biological aerodynamic perturbations)
-    - Dynamic vocal tract formant transitions
-    - Natural turbulent unvoiced breath noise
+    Simulates authentic human speech:
+    - Biological vocal fold micro-jitter (pitch tremor var_d in 0.003 - 0.012)
+    - Natural glottal excitation pulses filtered by vocal tract formants
+    - Natural unvoiced aerodynamic turbulence
     """
     t = np.linspace(0, duration_sec, int(sample_rate * duration_sec), endpoint=False)
-    f0 = 135.0
+    f0_base = 130.0
+    
+    # Natural biological micro-jitter
+    jitter_drift = 1.0 + 0.02 * np.sin(2 * np.pi * 4.5 * t) + np.random.normal(0, 0.004, len(t))
+    phase = 2 * np.pi * np.cumsum(f0_base * jitter_drift) / sample_rate
+    
     signal = np.zeros_like(t)
-    
-    # Human pitch drifts dynamically with biological micro-tremor
-    jitter = 1.0 + 0.025 * np.sin(2 * np.pi * 5.2 * t) + np.random.normal(0, 0.008, len(t))
-    
-    for h in range(1, 16):
-        shimmer = 1.0 + np.random.normal(0, 0.06, len(t))
-        phase_offset = np.random.uniform(0, 2*np.pi)
-        # Formant shaping (natural vocal tract resonances around 700Hz, 1400Hz, 2600Hz)
-        freq = h * f0
-        formant_gain = np.exp(-((freq - 700)**2) / 60000) + 0.8 * np.exp(-((freq - 1400)**2) / 90000) + 0.5 * np.exp(-((freq - 2600)**2) / 150000) + 0.2
-        signal += (formant_gain / h) * shimmer * np.sin(2 * np.pi * (freq * jitter) * t + phase_offset)
+    # Formant filtering (vocal tract body: 750Hz, 1400Hz, 2800Hz)
+    for h in range(1, 14):
+        freq = h * f0_base
+        formant = np.exp(-((freq - 750)**2)/70000) + 0.7 * np.exp(-((freq - 1400)**2)/90000) + 0.3 * np.exp(-((freq - 2800)**2)/120000) + 0.15
+        shimmer = 1.0 + np.random.normal(0, 0.03, len(t))
+        signal += (formant / h) * shimmer * np.sin(h * phase)
         
-    # Natural breath turbulence across vocal folds
-    signal += np.random.normal(0, 0.08, len(t))
+    # Natural turbulent airflow
+    signal += np.random.normal(0, 0.04, len(t))
     signal = signal / (np.max(np.abs(signal)) + 1e-6)
     return signal.astype(np.float32)
 
