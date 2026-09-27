@@ -12,6 +12,7 @@ import base64
 import numpy as np
 from fastapi import FastAPI, UploadFile, File
 from fastapi.responses import HTMLResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 # Ensure root workspace is on python path
@@ -21,6 +22,9 @@ from prototype.core.robust_detector import RealtimeVoiceDetector
 from prototype.run_demo import generate_human_voice_sample, generate_synthetic_voice_sample
 
 app = FastAPI(title="TeleGuard AI: Real-Time AI Voice Detection")
+
+static_dir = os.path.join(os.path.dirname(__file__), "static")
+app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
 detector = RealtimeVoiceDetector(target_sample_rate=16000)
 
@@ -84,6 +88,12 @@ def pcm_to_wav_base64(pcm_data: np.ndarray, sample_rate: int = 16000) -> str:
 async def serve_index():
     index_path = os.path.join(os.path.dirname(__file__), "static", "index.html")
     return FileResponse(index_path)
+
+@app.get("/diagram", response_class=HTMLResponse)
+@app.get("/architecture", response_class=HTMLResponse)
+async def serve_architecture_diagram():
+    diagram_path = os.path.join(os.path.dirname(__file__), "static", "architecture.html")
+    return FileResponse(diagram_path)
 
 @app.post("/api/analyze-recording")
 async def analyze_recording(req: AnalyzeRecordingRequest):
