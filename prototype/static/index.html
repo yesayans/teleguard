@@ -594,7 +594,16 @@
 
         async function startRecording() {
             try {
-                micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                // Request raw pristine audio: disable browser echo cancellation & noise suppression
+                // which otherwise artificially smooths glottal micro-variations
+                micStream = await navigator.mediaDevices.getUserMedia({
+                    audio: {
+                        echoCancellation: false,
+                        noiseSuppression: false,
+                        autoGainControl: false,
+                        channelCount: 1
+                    }
+                });
                 audioCtx = new (window.AudioContext || window.webkitAudioContext)();
                 const source = audioCtx.createMediaStreamSource(micStream);
                 
@@ -797,13 +806,15 @@
             // Biometric Telemetry
             if (data.biometrics) {
                 const b = data.biometrics;
-                if (b.pitch_jitter_pct !== undefined) {
+                const jitterVal = b.pitch_jitter_rap_pct !== undefined ? b.pitch_jitter_rap_pct : b.pitch_jitter_pct;
+                if (jitterVal !== undefined) {
                     const jitEl = document.getElementById('metric-jitter');
-                    jitEl.textContent = `${b.pitch_jitter_pct.toFixed(2)}%`;
-                    jitEl.style.color = b.pitch_jitter_pct < 0.35 ? '#ef4444' : '#10b981';
+                    jitEl.textContent = `${jitterVal.toFixed(3)}%`;
+                    jitEl.style.color = jitterVal < 0.025 ? '#ef4444' : '#10b981';
                 }
-                if (b.amplitude_shimmer_pct !== undefined) {
-                    document.getElementById('metric-shimmer').textContent = `${b.amplitude_shimmer_pct.toFixed(2)}%`;
+                const shimmerVal = b.amplitude_shimmer_apq3_pct !== undefined ? b.amplitude_shimmer_apq3_pct : b.amplitude_shimmer_pct;
+                if (shimmerVal !== undefined) {
+                    document.getElementById('metric-shimmer').textContent = `${shimmerVal.toFixed(3)}%`;
                 }
                 if (b.dissertation_z_score !== undefined) {
                     const zEl = document.getElementById('metric-zscore');
