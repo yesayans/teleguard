@@ -69,9 +69,18 @@ class PredictiveSyntheticVoiceDetector:
         if n <= w + 50:
             return 0.0
 
+        # Subsample to at most 16000 bits for sub-millisecond execution
+        if n > 16000:
+            bits = bits[:16000]
+            n = len(bits)
+
         split = int(0.80 * (n - w))
-        X = np.array([bits[i : i + w] for i in range(n - w)])
-        y = bits[w : n]
+        try:
+            X = np.lib.stride_tricks.sliding_window_view(bits[:-1], w)
+            y = bits[w:]
+        except Exception:
+            X = np.array([bits[i : i + w] for i in range(n - w)])
+            y = bits[w : n]
 
         X_train, y_train = X[:split], y[:split]
         X_test, y_test = X[split:], y[split:]

@@ -6,6 +6,9 @@ Focused 100% on detecting AI-Generated Speech vs Real Human Speech.
 import os
 import sys
 import time
+import io
+import wave
+import base64
 import numpy as np
 from fastapi import FastAPI, UploadFile, File
 from fastapi.responses import HTMLResponse, FileResponse
@@ -20,6 +23,13 @@ from prototype.run_demo import generate_human_voice_sample, generate_synthetic_v
 app = FastAPI(title="TeleGuard AI: Real-Time AI Voice Detection")
 
 detector = RealtimeVoiceDetector(target_sample_rate=16000)
+
+class AnalyzeRecordingRequest(BaseModel):
+    samples: list[float]
+    client_sample_rate: int = 16000
+
+class AnalyzePresetRequest(BaseModel):
+    preset: str # "human" | "ai_clone"
 
 class ProcessLiveAudioRequest(BaseModel):
     samples: list[float]
@@ -40,19 +50,91 @@ def resample_to_16k(audio: np.ndarray, orig_sr: int) -> np.ndarray:
     target_indices = np.linspace(0, len(audio) - 1, target_len)
     return np.interp(target_indices, orig_indices, audio).astype(np.float32)
 
+def sanitize_for_json(obj):
+    """Recursively converts all numpy scalars, booleans, and arrays to native python types."""
+    if isinstance(obj, dict):
+        return {k: sanitize_for_json(v) for k, v in obj.items()}
+    elif isinstance(obj, (list, tuple)):
+        return [sanitize_for_json(x) for x in obj]
+    elif isinstance(obj, (np.bool_, np.bool)):
+        return bool(obj)
+    elif isinstance(obj, (np.floating, np.float32, np.float64)):
+        return float(obj)
+    elif isinstance(obj, (np.integer, np.int32, np.int64)):
+        return int(obj)
+    elif isinstance(obj, np.ndarray):
+        return obj.tolist()
+    return obj
+
+def pcm_to_wav_base64(pcm_data: np.ndarray, sample_rate: int = 16000) -> str:
+    """Encodes float32 PCM samples into a browser-playable WAV Data URL."""
+    try:
+        buf = io.BytesIO()
+        with wave.open(buf, 'wb') as wf:
+            wf.setnchannels(1)
+            wf.setsampwidth(2)
+            wf.setframerate(sample_rate)
+            int16_data = (np.clip(pcm_data, -1.0, 1.0) * 32767).astype(np.int16)
+            wf.writeframes(int16_data.tobytes())
+        return "data:audio/wav;base64," + base64.b64encode(buf.getvalue()).decode("ascii")
+    except Exception:
+        return ""
+
 @app.get("/", response_class=HTMLResponse)
 async def serve_index():
     index_path = os.path.join(os.path.dirname(__file__), "static", "index.html")
     return FileResponse(index_path)
 
+@app.post("/api/analyze-recording")
+async def analyze_recording(req: AnalyzeRecordingRequest):
+    """
+    Analyzes a full recorded voice segment (from Start Recording -> Stop Recording).
+    Downsamples to 16kHz, computes pitch micro-jitter, amplitude shimmer,
+    and dissertation LPC residual next-bit predictability test.
+    """
+    start_t = time.perf_counter()
+    raw_samples = np.array(req.samples, dtype=np.float32)
+    
+    # Resample from client browser rate (44.1k/48k) to 16kHz
+    audio_16k = resample_to_16k(raw_samples, req.client_sample_rate)
+    
+    # Run full recording forensic analysis
+    result = detector.analyze_full_recording(audio_16k, sample_rate=16000)
+    elapsed_ms = (time.perf_counter() - start_t) * 1000.0
+    
+    # Generate WAV data URL for immediate audio playback in UI
+    audio_url = pcm_to_wav_base64(audio_16k, sample_rate=16000)
+    
+    result["processing_latency_ms"] = round(elapsed_ms, 2)
+    result["audio_data_url"] = audio_url
+    return sanitize_for_json(result)
+
+@app.post("/api/analyze-preset")
+async def analyze_preset(req: AnalyzePresetRequest):
+    """
+    Generates and benchmarks a realistic Human Voice or AI Voice Clone sample.
+    """
+    start_t = time.perf_counter()
+    fs = 16000
+    if req.preset == "human":
+        audio = generate_human_voice_sample(duration_sec=2.5, sample_rate=fs)
+    else:
+        audio = generate_synthetic_voice_sample(duration_sec=2.5, sample_rate=fs)
+        
+    result = detector.analyze_full_recording(audio, sample_rate=fs)
+    elapsed_ms = (time.perf_counter() - start_t) * 1000.0
+    audio_url = pcm_to_wav_base64(audio, sample_rate=fs)
+    
+    result["processing_latency_ms"] = round(elapsed_ms, 2)
+    result["audio_data_url"] = audio_url
+    result["preset_type"] = req.preset
+    return sanitize_for_json(result)
+
 @app.post("/api/process-live-audio")
 async def process_live_audio(req: ProcessLiveAudioRequest):
     start_t = time.perf_counter()
     raw_samples = np.array(req.samples, dtype=np.float32)
-    
-    # Resample from client's browser rate (e.g. 48kHz) to 16kHz
     audio_16k = resample_to_16k(raw_samples, req.client_sample_rate)
-    
     result = detector.analyze_audio(audio_16k, sample_rate=16000)
     elapsed_ms = (time.perf_counter() - start_t) * 1000.0
 
@@ -73,15 +155,12 @@ async def process_live_audio(req: ProcessLiveAudioRequest):
 async def process_frame(req: ProcessFrameRequest):
     start_t = time.perf_counter()
     fs = 16000
-    
     if req.scenario == "human":
-        # Authentic human speech with biological jitter
         t = np.linspace(0, 0.4, int(fs * 0.4))
         f0 = 135.0 * (1.0 + 0.018 * np.sin(2 * np.pi * 5.5 * t) + np.random.normal(0, 0.005, len(t)))
         phase = 2 * np.pi * np.cumsum(f0) / fs
         pcm_chunk = np.sin(phase) + 0.5 * np.sin(2 * phase) + 0.25 * np.sin(3 * phase)
     else:
-        # AI cloned speech: perfectly static neural pitch trajectory
         t = np.linspace(0, 0.4, int(fs * 0.4))
         f0 = 135.0
         pcm_chunk = np.sin(2 * np.pi * f0 * t) + 0.5 * np.sin(2 * np.pi * 2 * f0 * t) + 0.25 * np.sin(2 * np.pi * 3 * f0 * t)
@@ -107,21 +186,31 @@ async def process_frame(req: ProcessFrameRequest):
 async def detect_audio_file(file: UploadFile = File(...)):
     """Upload any audio file to test AI detection."""
     content = await file.read()
-    # Read raw bytes as 16-bit PCM if wav, or float
     try:
-        audio = np.frombuffer(content, dtype=np.int16).astype(np.float32) / 32768.0
-        if len(audio) < 1600:
-            return {"error": "Audio file too short (minimum 0.2s required)"}
-        result = detector.analyze_audio(audio[:32000], sample_rate=16000)
-        return {
-            "filename": file.filename,
-            "verdict": result["verdict"],
-            "synthetic_probability": result["synthetic_probability"],
-            "threat_level": result["threat_level"],
-            "details": result["details"]
-        }
+        try:
+            buf = io.BytesIO(content)
+            with wave.open(buf, 'rb') as wf:
+                sr = wf.getframerate()
+                n_channels = wf.getnchannels()
+                frames = wf.readframes(wf.getnframes())
+                audio = np.frombuffer(frames, dtype=np.int16).astype(np.float32) / 32768.0
+                if n_channels > 1:
+                    audio = audio[::n_channels]
+                if sr != 16000:
+                    audio = resample_to_16k(audio, sr)
+        except Exception:
+            audio = np.frombuffer(content, dtype=np.int16).astype(np.float32) / 32768.0
+
+        if len(audio) < 2000:
+            return {"status": "error", "error": "Audio file too short (minimum 0.3s required)"}
+
+        result = detector.analyze_full_recording(audio, sample_rate=16000)
+        audio_url = pcm_to_wav_base64(audio, sample_rate=16000)
+        result["filename"] = file.filename
+        result["audio_data_url"] = audio_url
+        return sanitize_for_json(result)
     except Exception as e:
-        return {"error": str(e)}
+        return {"status": "error", "error": str(e)}
 
 if __name__ == "__main__":
     import uvicorn
