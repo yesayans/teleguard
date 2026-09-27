@@ -8,6 +8,8 @@ venv/
 .venv/
 .env
 *.log
+*.wav
+*.mp3
 .system_generated/
 .DS_Store
 Thumbs.db
