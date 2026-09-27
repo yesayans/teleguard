@@ -109,32 +109,48 @@ async def analyze_recording(req: AnalyzeRecordingRequest):
     and dissertation LPC residual next-bit predictability test.
     """
     start_t = time.perf_counter()
-    raw_samples = np.array(req.samples, dtype=np.float32)
-    
-    # Resample from client browser rate (44.1k/48k) to 16kHz
-    audio_16k = resample_to_16k(raw_samples, req.client_sample_rate)
-    
-    # Run full recording forensic analysis
-    result = detector.analyze_full_recording(audio_16k, sample_rate=16000)
-    elapsed_ms = (time.perf_counter() - start_t) * 1000.0
-
-    # Save last recording for forensic audit
     try:
-        debug_path = os.path.join(os.path.dirname(__file__), "last_recording.wav")
-        if HAVE_SOUNDFILE:
-            sf.write(debug_path, audio_16k, 16000)
-    except Exception:
-        pass
+        raw_samples = np.array(req.samples, dtype=np.float32)
+        
+        # Resample from client browser rate (44.1k/48k) to 16kHz
+        audio_16k = resample_to_16k(raw_samples, req.client_sample_rate)
+        
+        # Run full recording forensic analysis
+        result = detector.analyze_full_recording(audio_16k, sample_rate=16000)
+        elapsed_ms = (time.perf_counter() - start_t) * 1000.0
 
-    bio = result.get("biometrics", {})
-    print(f"[TeleGuard AI] Recording analyzed: dur={len(audio_16k)/16000:.2f}s | verdict={result.get('verdict')} | prob={result.get('synthetic_probability')} | tremor={bio.get('laryngeal_tremor_pct')}% | comb={bio.get('high_freq_comb_periodicity')} | rap={bio.get('pitch_jitter_rap_pct')}% | latency={elapsed_ms:.1f}ms")
-    
-    # Generate WAV data URL for immediate audio playback in UI
-    audio_url = pcm_to_wav_base64(audio_16k, sample_rate=16000)
-    
-    result["processing_latency_ms"] = round(elapsed_ms, 2)
-    result["audio_data_url"] = audio_url
-    return sanitize_for_json(result)
+        # Save last recording for forensic audit
+        try:
+            debug_path = os.path.join(os.path.dirname(__file__), "last_recording.wav")
+            if HAVE_SOUNDFILE:
+                sf.write(debug_path, audio_16k, 16000)
+        except Exception:
+            pass
+
+        bio = result.get("biometrics", {})
+        print(f"[TeleGuard AI] Recording analyzed: dur={len(audio_16k)/16000:.2f}s | verdict={result.get('verdict')} | prob={result.get('synthetic_probability')} | tremor={bio.get('laryngeal_tremor_pct')}% | comb={bio.get('high_freq_comb_periodicity')} | rap={bio.get('pitch_jitter_rap_pct')}% | latency={elapsed_ms:.1f}ms")
+        
+        # Generate WAV data URL for immediate audio playback in UI
+        audio_url = pcm_to_wav_base64(audio_16k, sample_rate=16000)
+        
+        result["processing_latency_ms"] = round(elapsed_ms, 2)
+        result["audio_data_url"] = audio_url
+        return sanitize_for_json(result)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return sanitize_for_json({
+            "status": "error",
+            "is_ai_generated": False,
+            "verdict": "ANALYSIS_ERROR",
+            "verdict_title": "ANALYSIS ERROR OCCURRED",
+            "summary": f"Signal processing error: {str(e)}",
+            "threat_level": "NORMAL",
+            "confidence_pct": 0.0,
+            "synthetic_probability": 0.0,
+            "telecom_action": "RETRY_RECORDING",
+            "biometrics": {}
+        })
 
 def add_room_acoustics(sig: np.ndarray, fs: int = 16000, noise_level: float = 0.035, add_reverb: bool = True) -> np.ndarray:
     """Simulates realistic room acoustics: reverberation, desk rumble, and background noise."""

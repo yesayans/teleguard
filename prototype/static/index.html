@@ -792,6 +792,10 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ samples: pcmAccumulator, client_sample_rate: clientRate })
                 });
+                if (!resp.ok) {
+                    const errorText = await resp.text();
+                    throw new Error(`Server status ${resp.status}: ${errorText.slice(0, 120)}`);
+                }
                 const data = await resp.json();
                 displayVerdictReport(data);
             } catch (err) {
@@ -865,14 +869,14 @@
             const title = document.getElementById('verdict-title');
             const sub = document.getElementById('verdict-sub');
 
-            // Handle Insufficient Speech or Silence
-            if (data.status === 'insufficient_speech' || data.status === 'silence') {
+            // Handle Insufficient Speech, Silence, or Error
+            if (data.status === 'insufficient_speech' || data.status === 'silence' || data.status === 'error') {
                 banner.className = 'verdict-banner warning';
-                pill.textContent = 'INSUFFICIENT AUDIO';
+                pill.textContent = data.status === 'error' ? 'PROCESSING ERROR' : 'INSUFFICIENT AUDIO';
                 pill.style.color = '#f59e0b';
-                title.textContent = data.verdict_title || 'INSUFFICIENT SPEECH DETECTED';
+                title.textContent = data.verdict_title || (data.status === 'error' ? 'AUDIO PROCESSING ERROR' : 'INSUFFICIENT SPEECH DETECTED');
                 title.style.color = '#f59e0b';
-                sub.textContent = data.summary;
+                sub.textContent = data.summary || data.error || 'Please speak clearly and record again.';
                 return;
             }
 

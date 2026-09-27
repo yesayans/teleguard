@@ -469,10 +469,14 @@ class RealtimeVoiceDetector:
             segment_tremors = []
             for s_idx, e_idx in zip(starts, ends):
                 seg = f0_vals[s_idx:e_idx]
-                if len(seg) >= 15: # At least 75ms continuous phonation
-                    trem_sig = scipy.signal.filtfilt(b_t, a_t, seg)
-                    seg_trem = float(np.sqrt(np.mean(trem_sig**2)) / (np.mean(seg) + 1e-6) * 100.0)
-                    segment_tremors.append(seg_trem)
+                if len(seg) >= 20: # At least 100ms continuous phonation
+                    try:
+                        pad = min(7, len(seg) - 1)
+                        trem_sig = scipy.signal.filtfilt(b_t, a_t, seg, padlen=pad)
+                        seg_trem = float(np.sqrt(np.mean(trem_sig**2)) / (np.mean(seg) + 1e-6) * 100.0)
+                        segment_tremors.append(seg_trem)
+                    except Exception:
+                        pass
                     
             if len(segment_tremors) > 0:
                 tremor_pct = float(np.median(segment_tremors))
