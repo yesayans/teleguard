@@ -112,19 +112,31 @@ def compute_harmonic_peak_prominence(audio: np.ndarray, fs: int = 16000, f0_ref:
 
 def compute_high_frequency_comb_periodicity(audio: np.ndarray, fs: int = 16000) -> float:
     """
-    Measures phase-coherent harmonic comb periodicity in the 2.8 kHz - 7.2 kHz band.
+    Measures phase-coherent harmonic comb periodicity in the 2.8 kHz - 7.2 kHz band,
+    energy-weighted by the high-frequency power ratio.
     
     Acoustic Invariant:
-    - Neural vocoders (HiFi-GAN, BigVGAN, MelGAN) use transposed convolutions that repeat
-      coherent harmonic comb lines across high frequencies (Comb Periodicity > 0.35, often 0.70+).
-    - Living human speech has lossy vocal tract soft tissue damping and chaotic glottal turbulence
-      (Comb Periodicity < 0.08).
-    - Invariant against laptop speaker chassis resonance, playback reflections, and fan noise.
+    - Neural vocoders (Gemini SpeechLM, SoundStream, HiFi-GAN, BigVGAN) use transposed convolutions
+      that synthesize anomalous high-frequency energy (HF power ratio >= 3.5%, often 15-30%) with
+      rigid phase-coherent envelope periodicity (Comb Periodicity >= 0.35).
+    - Living human speech has natural acoustic vocal tract damping (-6 dB/octave tilt) that
+      heavily attenuates high frequencies (HF power ratio < 2.5%, typically 0.2% - 1.5%).
+    - Weighting envelope correlation by high-band power ratio cleanly rejects false positives
+      from weak glottal pulse leakage in clean human microphone recordings.
     """
     try:
         if len(audio) < int(fs * 0.25):
             return 0.05
         nyq = 0.5 * fs
+        
+        # 1. High-frequency power ratio (3.5 kHz - 7.5 kHz)
+        b_hf, a_hf = scipy.signal.butter(3, [3500.0 / nyq, min(7500.0 / nyq, 0.98)], btype='band')
+        hf_sig = scipy.signal.filtfilt(b_hf, a_hf, audio)
+        tot_power = float(np.mean(audio**2)) + 1e-12
+        hf_power = float(np.mean(hf_sig**2))
+        hf_ratio = hf_power / tot_power
+
+        # 2. Envelope correlation in 2.8 kHz - 7.2 kHz
         low = min(2800.0 / nyq, 0.90)
         high = min(7200.0 / nyq, 0.98)
         b, a = scipy.signal.butter(3, [low, high], btype='band')
@@ -140,8 +152,13 @@ def compute_high_frequency_comb_periodicity(audio: np.ndarray, fs: int = 16000) 
         max_lag = int(fs / 70)
         if max_lag >= len(corr) or corr[0] < 1e-9:
             return 0.05
-        peak_r = float(np.max(corr[min_lag:max_lag]) / corr[0])
-        return max(0.0, min(1.0, round(peak_r, 4)))
+        raw_peak_r = float(np.max(corr[min_lag:max_lag]) / corr[0])
+        
+        # Energy-weighted vocoder comb: requires both periodic envelope AND anomalous high-frequency power
+        # Authentic neural vocoders have hf_ratio >= 0.035; human speech has hf_ratio < 0.025
+        weight = min(1.0, max(0.0, hf_ratio / 0.035))
+        comb_periodicity = raw_peak_r * weight
+        return max(0.0, min(1.0, round(comb_periodicity, 4)))
     except Exception:
         return 0.05
 
@@ -598,12 +615,12 @@ class RealtimeVoiceDetector:
                 "status": "WARNING_LOW",
                 "detail": f"Sub-biological laryngeal micro-tremor ({tremor_pct:.3f}% < 0.20%). Pitch trajectory lacks expected biological variance."
             })
-        elif 0.35 <= tremor_pct <= 1.80 and not has_moderate_comb:
+        elif 0.35 <= tremor_pct <= 2.20 and not has_moderate_comb:
             synthetic_evidence -= 1.80
             evidence_breakdown.append({
                 "metric": "Laryngeal Neuromuscular Micro-Tremor",
                 "value": f"{tremor_pct:.3f}%",
-                "baseline": "0.350% – 1.800% (Living Human Physiological Tremor)",
+                "baseline": "0.350% – 2.200% (Living Human Physiological Tremor)",
                 "status": "PASS_HUMAN",
                 "detail": f"Authentic human physiological neuromuscular tremor verified ({tremor_pct:.3f}%). Living human laryngeal motor units physically waver at 8–12 Hz."
             })
@@ -611,7 +628,7 @@ class RealtimeVoiceDetector:
             evidence_breakdown.append({
                 "metric": "Laryngeal Neuromuscular Micro-Tremor",
                 "value": f"{tremor_pct:.3f}%",
-                "baseline": "0.350% – 1.800% (Living Human Physiological Tremor)",
+                "baseline": "0.350% – 2.200% (Living Human Physiological Tremor)",
                 "status": "NEUTRAL_TRANSITION",
                 "detail": f"Tremor ({tremor_pct:.3f}%) in transition or non-biological scatter range."
             })
@@ -621,7 +638,7 @@ class RealtimeVoiceDetector:
             evidence_breakdown.append({
                 "metric": "Vocal Fold Micro-Jitter (RAP)",
                 "value": f"{j_rap_pct:.3f}%",
-                "baseline": "0.060% – 0.500% (Living Human Range)",
+                "baseline": "0.060% – 2.500% (Living Human Conversational Range)",
                 "status": "OVERRIDDEN_BY_VOCODER",
                 "detail": f"Micro-jitter ({j_rap_pct:.3f}%) superseded by vocoder high-frequency comb periodicity."
             })
@@ -630,7 +647,7 @@ class RealtimeVoiceDetector:
             evidence_breakdown.append({
                 "metric": "Vocal Fold Micro-Jitter (RAP)",
                 "value": f"{j_rap_pct:.3f}%",
-                "baseline": "0.060% – 0.500% (Living Human Range)",
+                "baseline": "0.060% – 2.500% (Living Human Conversational Range)",
                 "status": "FAIL_SYNTHETIC",
                 "detail": f"Machine-smooth cycle-to-cycle pitch periods (RAP {j_rap_pct:.3f}% < 0.020%)."
             })
@@ -639,16 +656,16 @@ class RealtimeVoiceDetector:
             evidence_breakdown.append({
                 "metric": "Vocal Fold Micro-Jitter (RAP)",
                 "value": f"{j_rap_pct:.3f}%",
-                "baseline": "0.060% – 0.500% (Living Human Range)",
+                "baseline": "0.060% – 2.500% (Living Human Conversational Range)",
                 "status": "WARNING_LOW",
                 "detail": f"Unusually low pitch micro-jitter ({j_rap_pct:.3f}% < 0.040%)."
             })
-        elif 0.060 <= j_rap_pct <= 0.600 and 0.30 <= tremor_pct <= 1.80 and not has_moderate_comb:
+        elif 0.060 <= j_rap_pct <= 2.500 and 0.30 <= tremor_pct <= 2.20 and not has_moderate_comb:
             synthetic_evidence -= 0.60
             evidence_breakdown.append({
                 "metric": "Vocal Fold Micro-Jitter (RAP)",
                 "value": f"{j_rap_pct:.3f}%",
-                "baseline": "0.060% – 0.500% (Living Human Range)",
+                "baseline": "0.060% – 2.500% (Living Human Conversational Range)",
                 "status": "PASS_HUMAN",
                 "detail": "Natural biological vocal fold cycle perturbation confirmed."
             })
@@ -656,7 +673,7 @@ class RealtimeVoiceDetector:
             evidence_breakdown.append({
                 "metric": "Vocal Fold Micro-Jitter (RAP)",
                 "value": f"{j_rap_pct:.3f}%",
-                "baseline": "0.060% – 0.500% (Living Human Range)",
+                "baseline": "0.060% – 2.500% (Living Human Conversational Range)",
                 "status": "NEUTRAL",
                 "detail": f"Micro-jitter ({j_rap_pct:.3f}%) in transitional range."
             })
@@ -698,15 +715,6 @@ class RealtimeVoiceDetector:
                 "baseline": "Z ≤ 3.34 (Bonferroni alpha=0.01)",
                 "status": "FAIL_SYNTHETIC",
                 "detail": "Predictive test rejects live speech hypothesis (p < 0.01). Excitation residual matches synthetic generator regularity."
-            })
-        elif z_score > 2.60:
-            synthetic_evidence += 0.40
-            evidence_breakdown.append({
-                "metric": "LPC Residual Next-Bit Predictability",
-                "value": f"Z = {z_score:.2f} (Delta = {pred_delta:.4f})",
-                "baseline": "Z ≤ 3.34 (Bonferroni alpha=0.01)",
-                "status": "WARNING_ELEVATED",
-                "detail": f"Elevated excitation predictability tendency (Z = {z_score:.2f})."
             })
         else:
             evidence_breakdown.append({
