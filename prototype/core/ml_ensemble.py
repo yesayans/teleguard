@@ -167,6 +167,54 @@ class MultiEngineVoiceDetector:
                         tremor_pct = float(np.median(tremors))
             except Exception:
                 pass
+        else:
+            # Pure NumPy/SciPy fallback (100% ARM64/aarch64 compatible, zero C++ compilation needed)
+            try:
+                frame_len = int(fs * 0.035)
+                hop_len = int(fs * 0.010)
+                min_lag = int(fs / 400)
+                max_lag = int(fs / 75)
+                pitch_periods = []
+                frame_amps = []
+                for start in range(0, len(sig) - frame_len, hop_len):
+                    chunk = sig[start : start + frame_len]
+                    rms = np.sqrt(np.mean(chunk**2))
+                    if rms < 0.01:
+                        continue
+                    corr = np.correlate(chunk, chunk, mode='full')[len(chunk)-1:]
+                    if max_lag < len(corr):
+                        lag_win = corr[min_lag:max_lag]
+                        peak_idx = np.argmax(lag_win)
+                        peak_lag = min_lag + peak_idx
+                        prom = corr[peak_lag] / (corr[0] + 1e-9)
+                        if prom > 0.35 and 0 < peak_lag < len(corr) - 1:
+                            y0, y1, y2 = corr[peak_lag-1], corr[peak_lag], corr[peak_lag+1]
+                            denom = 2 * (y0 - 2*y1 + y2)
+                            delta = (y0 - y2) / denom if abs(denom) > 1e-9 else 0.0
+                            pitch_periods.append(peak_lag + delta)
+                            frame_amps.append(rms)
+
+                if len(pitch_periods) >= 4:
+                    T = np.array(pitch_periods, dtype=np.float32)
+                    A = np.array(frame_amps, dtype=np.float32)
+                    mean_T = float(np.mean(T))
+                    f0_hz = float(fs / (mean_T + 1e-6))
+                    rap_diffs = [abs(T[i] - (T[i-1] + T[i] + T[i+1])/3.0) for i in range(1, len(T)-1)]
+                    if rap_diffs:
+                        j_rap_pct = float(np.mean(rap_diffs) / (mean_T + 1e-6) * 100.0)
+                    j_local_pct = float(np.mean(np.abs(np.diff(T))) / (mean_T + 1e-6) * 100.0)
+                    apq3_diffs = [abs(A[i] - (A[i-1] + A[i] + A[i+1])/3.0) for i in range(1, len(A)-1)]
+                    if apq3_diffs:
+                        s_apq3_pct = float(np.mean(apq3_diffs) / (np.mean(A) + 1e-6) * 100.0)
+                    f0_contour = fs / (T + 1e-6)
+                    if len(f0_contour) >= 15:
+                        nyq_rate = (1.0 / 0.010) * 0.5
+                        b_t, a_t = scipy.signal.butter(3, [6.0 / nyq_rate, 18.0 / nyq_rate], btype='band')
+                        f0_detr = scipy.signal.detrend(f0_contour)
+                        trem_sig = scipy.signal.filtfilt(b_t, a_t, f0_detr, padlen=min(7, len(f0_detr)-1))
+                        tremor_pct = float(np.sqrt(np.mean(trem_sig**2)) / (np.mean(f0_contour) + 1e-6) * 100.0)
+            except Exception:
+                pass
 
         feats["pitch_jitter_rap_pct"] = float(j_rap_pct)
         feats["pitch_jitter_local_pct"] = float(j_local_pct)
