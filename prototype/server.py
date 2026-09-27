@@ -57,23 +57,49 @@ async def serve_index():
 @app.post("/api/process-frame")
 async def process_frame(req: ProcessFrameRequest):
     chunk_samples = 6400 # 400ms at 16kHz
+    call_id = "CALL_DEMO_2026_SESSION"
+    now = time.time()
     
-    if req.scenario == "human":
-        # Generate authentic human speech with biological micro-jitter
+    is_registered_claim = False
+    
+    if req.scenario == "registered_genuine":
+        # Sending side: Grandson speaks, device embeds active 30s voice certificate
+        raw_voice = generate_human_voice_sample(duration_sec=0.4)
+        pcm_chunk = pipeline.voice_cert_embedder.embed_certificate(raw_voice, call_id=call_id, timestamp=now)
+        response_latency = 190.0
+        is_registered_claim = True
+    elif req.scenario == "registered_imposter_ai":
+        # Attacker: Uses ElevenLabs/XTTS to clone Grandson's voice, but lacks secret key!
+        pcm_chunk = generate_synthetic_voice_sample(duration_sec=0.4)
+        response_latency = 1100.0
+        is_registered_claim = True
+    elif req.scenario == "registered_replay":
+        # Attacker: Replays a recorded call from 5 minutes ago (expired epoch)
+        raw_voice = generate_human_voice_sample(duration_sec=0.4)
+        old_epoch_time = now - 180 # 6 epochs ago
+        pcm_chunk = pipeline.voice_cert_embedder.embed_certificate(raw_voice, call_id=call_id, timestamp=old_epoch_time)
+        response_latency = 210.0
+        is_registered_claim = True
+    elif req.scenario == "human":
+        # Unregistered regular human call
         pcm_chunk = generate_human_voice_sample(duration_sec=0.4)
         response_latency = 220.0
     elif req.scenario == "synthetic_opensource":
-        # Generate open-source model speech with vocoder upsampling artifacts
+        # Unregistered open-source synthetic call (XTTS)
         pcm_chunk = generate_synthetic_voice_sample(duration_sec=0.4)
         response_latency = 1180.0
     else: # commercial watermarked
         pcm_chunk = generate_synthetic_voice_sample(duration_sec=0.4)
-        # Add SynthID spread-spectrum watermark signature in high frequencies
         sig = pipeline.watermark_detector.signatures["SynthID_Audio"]
         pcm_chunk[-len(sig):] += sig * 0.4
         response_latency = 1250.0
 
-    result = pipeline.process_incoming_rtp_chunk(pcm_chunk, response_latency_ms=response_latency)
+    result = pipeline.process_incoming_rtp_chunk(
+        pcm_chunk, 
+        response_latency_ms=response_latency,
+        is_registered_caller_claim=is_registered_claim,
+        call_id=call_id
+    )
     return result
 
 if __name__ == "__main__":

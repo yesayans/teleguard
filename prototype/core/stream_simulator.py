@@ -12,6 +12,8 @@ from prototype.core.watermark import WatermarkDetector
 from prototype.core.detector import AcousticReconstructionDetector
 from prototype.core.certificate import SubscriberAcousticCertificate
 
+from prototype.core.voice_certificate import VoiceCertificateVerifier, VoiceCertificateEmbedder
+
 class EphemeralCircularRingBuffer:
     """
     Fixed-size volatile RAM ring buffer.
@@ -53,12 +55,17 @@ class EphemeralCircularRingBuffer:
 
 
 class TelecomCallPipeline:
-    def __init__(self, subscriber_id: str = "+37491001122"):
+    def __init__(self, subscriber_id: str = "+37491001122", registered_key: str = "GRANDSON_REGISTERED_SECRET_99"):
         self.subscriber_id = subscriber_id
+        self.registered_key = registered_key
         self.ring_buffer = EphemeralCircularRingBuffer(capacity_samples=32000)
         self.watermark_detector = WatermarkDetector()
         self.reconstruction_detector = AcousticReconstructionDetector(sample_rate=16000)
         self.certificate_engine = SubscriberAcousticCertificate(subscriber_id=subscriber_id)
+        
+        # New Voice Certificate Verifier & Embedder
+        self.voice_cert_verifier = VoiceCertificateVerifier(secret_key=registered_key, epoch_seconds=30)
+        self.voice_cert_embedder = VoiceCertificateEmbedder(secret_key=registered_key, epoch_seconds=30)
         
         self.call_state = {
             "frames_processed": 0,
@@ -69,53 +76,67 @@ class TelecomCallPipeline:
             "active_challenge": None
         }
 
-    def process_incoming_rtp_chunk(self, pcm_data: np.ndarray, response_latency_ms: float = 250.0) -> dict:
+    def process_incoming_rtp_chunk(self, pcm_data: np.ndarray, response_latency_ms: float = 250.0,
+                                   is_registered_caller_claim: bool = False, call_id: str = "CALL_SESSION_DEFAULT") -> dict:
         """
         Processes a live 400ms RTP voice chunk from the telecom switch.
         Runs asynchronously as a side-channel tap (0 delay added to call).
+        If the caller claims to be a registered subscriber, Voice Certificate verification takes precedence.
         """
         start_time = time.perf_counter()
         self.ring_buffer.push(pcm_data)
         window = self.ring_buffer.get_latest_window(6400) # 400ms @ 16kHz
         self.call_state["frames_processed"] += 1
 
-        # Tier 1: Check Commercial Watermarks (SynthID, AudioSeal, ElevenLabs)
-        wm_res = self.watermark_detector.scan(window)
-        
-        detection_tier = "TIER_1_WATERMARK" if wm_res["detected"] else "TIER_2_ACOUSTIC_RECONSTRUCTION"
-        
-        if wm_res["detected"]:
-            synthetic_score = wm_res["confidence"]
-            stage_details = {"provider": wm_res["provider"], "watermark_present": True}
-        else:
-            # Tier 2: Check Generative Reconstructibility & Vocoder Regularities (Dissertation Method)
-            dsp_res = self.reconstruction_detector.analyze_frame(window)
-            synthetic_score = dsp_res["synthetic_probability"]
-            stage_details = dsp_res["metrics"]
+        voice_cert_result = None
 
-        # Check if active challenge-response is warranted (Borderline or High Risk: 0.65 - 0.85)
-        challenge_res = None
-        if synthetic_score > 0.65 and not self.call_state["alert_triggered"]:
-            detection_tier = "TIER_3_ACOUSTIC_CHALLENGE"
-            challenge = self.certificate_engine.generate_challenge()
-            challenge_res = self.certificate_engine.verify_response(window, challenge, response_latency_ms)
-            if not challenge_res["authenticated"]:
-                # Boost confidence based on failed challenge
-                synthetic_score = max(synthetic_score, challenge_res["imposter_probability"])
-
-        # Determine Threat Level & Alert Trigger
-        if synthetic_score >= 0.80:
-            threat_level = "CRITICAL_THREAT"
-            alert_triggered = True
-            alert_type = "IN_CALL_AUDIO_WHISPER_AND_FLASH_SMS"
-        elif synthetic_score >= 0.55:
-            threat_level = "SUSPICIOUS"
-            alert_triggered = False
-            alert_type = None
+        # Check Voice Certificate if the inbound caller claims a registered identity
+        if is_registered_caller_claim:
+            voice_cert_result = self.voice_cert_verifier.verify_frame(window, call_id=call_id)
+            detection_tier = "TIER_VOICE_CERTIFICATE"
+            
+            if voice_cert_result["verified"]:
+                synthetic_score = 0.04
+                threat_level = "AUTHENTIC_CERTIFIED_CALLER"
+                alert_triggered = False
+                stage_details = voice_cert_result
+            elif voice_cert_result["replay_attack"]:
+                synthetic_score = 1.00
+                threat_level = "REPLAY_ATTACK_DETECTED"
+                alert_triggered = True
+                stage_details = voice_cert_result
+            else:
+                synthetic_score = 0.99
+                threat_level = "AI_IMPOSTER_CERTIFICATE_MISSING"
+                alert_triggered = True
+                stage_details = voice_cert_result
         else:
-            threat_level = "AUTHENTIC_HUMAN"
-            alert_triggered = False
-            alert_type = None
+            # Tier 1: Check Commercial Watermarks (SynthID, AudioSeal, ElevenLabs)
+            wm_res = self.watermark_detector.scan(window)
+            
+            detection_tier = "TIER_1_WATERMARK" if wm_res["detected"] else "TIER_2_ACOUSTIC_RECONSTRUCTION"
+            
+            if wm_res["detected"]:
+                synthetic_score = wm_res["confidence"]
+                stage_details = {"provider": wm_res["provider"], "watermark_present": True}
+            else:
+                # Tier 2: Check Generative Reconstructibility & Vocoder Regularities (Dissertation Method)
+                dsp_res = self.reconstruction_detector.analyze_frame(window)
+                synthetic_score = dsp_res["synthetic_probability"]
+                stage_details = dsp_res["metrics"]
+
+            # Threat Level determination
+            if synthetic_score >= 0.80:
+                threat_level = "CRITICAL_THREAT"
+                alert_triggered = True
+            elif synthetic_score >= 0.55:
+                threat_level = "SUSPICIOUS"
+                alert_triggered = False
+            else:
+                threat_level = "AUTHENTIC_HUMAN"
+                alert_triggered = False
+
+        alert_type = "IN_CALL_AUDIO_WHISPER_AND_FLASH_SMS" if alert_triggered else None
 
         self.call_state["threat_level"] = threat_level
         self.call_state["synthetic_score"] = round(float(synthetic_score), 4)
@@ -131,10 +152,10 @@ class TelecomCallPipeline:
             "synthetic_score": self.call_state["synthetic_score"],
             "detection_tier_used": detection_tier,
             "stage_details": stage_details,
-            "challenge_results": challenge_res,
+            "voice_certificate_result": voice_cert_result,
             "alert_delivered": {
                 "in_call_whisper": alert_triggered,
-                "flash_sms": "[SECURITY ALERT] TELECOM SHIELD: AI Voice Cloning Detected. Hang up immediately." if alert_triggered else None
+                "flash_sms": f"[SECURITY ALERT] TELECOM SHIELD: {threat_level}. Hang up immediately." if alert_triggered else None
             },
             "zero_recording_guarantee": "EPHEMERAL_RAM_ONLY_NO_DISK_IO"
         }

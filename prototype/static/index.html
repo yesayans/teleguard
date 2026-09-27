@@ -368,11 +368,14 @@
             </div>
 
             <div class="control-group">
-                <label>Inbound Caller Profile</label>
+                <label>Inbound Caller Profile & Scenario</label>
                 <select id="caller-scenario" onchange="handleScenarioChange()">
-                    <option value="human">Authentic Family Relative (Human Voice Simulation)</option>
+                    <option value="registered_genuine">🛡️ Certified Caller (Legitimate Grandson with Voice Certificate)</option>
+                    <option value="registered_imposter_ai" selected>🚨 AI Voice Clone of Grandson (Missing Voice Certificate)</option>
+                    <option value="registered_replay">📼 Replay Attack (Scammer Replaying Yesterday's Call)</option>
                     <option value="live_mic">🎙️ Live Microphone Input (Test Your Own Voice Live)</option>
-                    <option value="synthetic_opensource" selected>Open-Source Cloned Voice (XTTS / StyleTTS2)</option>
+                    <option value="human">Unregistered Human Relative (Acoustic Next-Bit Test)</option>
+                    <option value="synthetic_opensource">Unregistered Cloned Voice (XTTS / StyleTTS2)</option>
                     <option value="synthetic_watermarked">Commercial Cloned Voice (SynthID / ElevenLabs)</option>
                 </select>
             </div>
@@ -769,7 +772,28 @@
                 whisperStatus.style.color = '#64748b';
             }
 
-            if (data.challenge_results) {
+            if (data.voice_certificate_result) {
+                const vc = data.voice_certificate_result;
+                const statusEl = document.getElementById('cert-status');
+                const verdictEl = document.getElementById('challenge-verdict');
+                
+                if (vc.verified) {
+                    statusEl.textContent = `AUTHENTIC (Corr: ${vc.correlation_score.toFixed(3)})`;
+                    statusEl.style.color = '#00e676';
+                    verdictEl.textContent = 'Voice Certificate Verified: Legitimate Caller';
+                    verdictEl.style.color = '#00e676';
+                } else if (vc.replay_attack) {
+                    statusEl.textContent = 'REPLAY DETECTED';
+                    statusEl.style.color = '#ff3366';
+                    verdictEl.textContent = 'Expired Token: Audio replayed from past call!';
+                    verdictEl.style.color = '#ff3366';
+                } else {
+                    statusEl.textContent = `MISSING (Corr: ${vc.correlation_score.toFixed(3)})`;
+                    statusEl.style.color = '#ff3366';
+                    verdictEl.textContent = 'Imposter: AI Voice Clone lacking secret key!';
+                    verdictEl.style.color = '#ff3366';
+                }
+            } else if (data.challenge_results) {
                 document.getElementById('challenge-verdict').textContent = data.challenge_results.verdict;
                 document.getElementById('challenge-verdict').style.color = data.challenge_results.authenticated ? '#00e676' : '#ff3366';
             }
